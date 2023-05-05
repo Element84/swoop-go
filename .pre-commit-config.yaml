@@ -12,5 +12,9 @@ repos:
     rev: v1.0.0-rc.1
     hooks:
     -   id: go-fmt
+        args:
+          - "-d=false"
+          - "-s"
+          - "-w"
     -   id: go-test-mod
     -   id: go-mod-tidy
