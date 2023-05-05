@@ -21,7 +21,7 @@ import (
 	"github.com/argoproj/argo-workflows/v3/workflow/controller/indexes"
 	"github.com/argoproj/argo-workflows/v3/workflow/util"
 
-	"github.com/element84/swoop-go/pkg/config"
+	"github.com/element84/swoop-go/pkg/db"
 )
 
 const (
@@ -53,7 +53,7 @@ func (wf *workflowEvent) process() {
 
 type ArgoCaboose struct {
 	ConfigFile     string
-	DatabaseConfig *config.DatabaseConfig
+	DatabaseConfig *db.DatabaseConfig
 	K8sConfigFlags *genericclioptions.ConfigFlags
 }
 

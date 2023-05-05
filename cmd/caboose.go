@@ -8,6 +8,7 @@ import (
 
 	"github.com/element84/swoop-go/pkg/caboose"
 	"github.com/element84/swoop-go/pkg/cmdutil"
+	"github.com/element84/swoop-go/pkg/db"
 )
 
 func init() {
@@ -23,8 +24,8 @@ func mkCabooseCmd() *cobra.Command {
 		Use:   "caboose",
 		Short: "swoop-caboose commands for state updates",
 	}
-	databaseConfig := databaseFlags(cmd.PersistentFlags())
-	// TODO: convert config flag to be like others
+	databaseConfig := &db.DatabaseConfig{}
+	databaseConfig.AddFlags(cmd.PersistentFlags())
 	cmd.PersistentFlags().StringVarP(
 		&config, "config-file", "f", "", "swoop-caboose config file path (required; SWOOP_CONFIG_FILE)",
 	)
