@@ -28,20 +28,25 @@ go test
 
 ### Managing dependencies
 
+Simply add/remove imports as needed in modules.  Use the following commands to
+pull in/clean up installed modules.
+
 ```shell
 # from the project root
 
-# update go.mod from package imports
-# -u upgrades dependencies
-go get -u .
-
-# clean up go.mod
+# update go.mod from src imports
 go mod tidy
+
+# upgrade all dependencies
+go get -u
+
+# upgrade and clean up
+go get -u && go mod tidy
 ```
 
 ### Formatting `.go` files
 
-```
+```shell
 # from the project root
 gofmt -s -w -l .
 ```
@@ -54,8 +59,8 @@ editor is configured to use use tabs with your preferred tabstop width.
 
 After building the `swoop` binary, it can be executed via `./swoop`.
 
-Note that some of the exposed commands may require one or more external services for
-testing, including but not limited to:
+Note that some of the exposed commands may require one or more external
+services for testing, including but not limited to:
 
 * a kubernetes cluster running Argo Workflows
 * a Postgres instance with [a SWOOP database](https://github.com/Element84/swoop/tree/main/db)
