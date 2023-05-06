@@ -13,7 +13,7 @@ type CliHandler interface {
 		ctx context.Context,
 		cancel context.CancelFunc,
 	)
-	Run(ctx context.Context) error
+	Run(ctx context.Context, cancel context.CancelFunc) error
 }
 
 func Run(c CliHandler) error {
@@ -29,5 +29,5 @@ func Run(c CliHandler) error {
 		cancel()
 	}()
 
-	return c.Run(ctx)
+	return c.Run(ctx, cancel)
 }

@@ -1,10 +1,15 @@
 package db
 
 import (
+	"context"
 	"fmt"
+	"log"
 
+	"github.com/jackc/pgx/v4/pgxpool"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
+	"github.com/vingarcia/ksql"
+	"github.com/vingarcia/ksql/adapters/kpgx"
 )
 
 type DatabaseConfig struct {
@@ -27,6 +32,29 @@ func (db *DatabaseConfig) Url() string {
 		db.Name,
 		db.UrlExtra,
 	)
+}
+
+func (db *DatabaseConfig) Connect(ctx context.Context) (*ksql.DB, error) {
+	log.Printf("Database URL: %s", db.Url())
+	return Connect(ctx, db.Url())
+}
+
+func Connect(ctx context.Context, dbUrl string) (*ksql.DB, error) {
+	// getting the config allows us to modify it if/when we need
+	// (i.e., we could in the future support more config parameters,
+	// see https://pkg.go.dev/github.com/jackc/pgx/v4/pgxpool#Config)
+	config, err := pgxpool.ParseConfig(dbUrl)
+	if err != nil {
+		return nil, err
+	}
+
+	pool, err := pgxpool.ConnectConfig(ctx, config)
+	if err != nil {
+		return nil, err
+	}
+
+	db, err := kpgx.NewFromPgxPool(pool)
+	return &db, err
 }
 
 func (db *DatabaseConfig) AddFlags(fs *pflag.FlagSet) {

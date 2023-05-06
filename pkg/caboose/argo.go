@@ -14,12 +14,12 @@ import (
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/cli-runtime/pkg/genericclioptions"
 	"k8s.io/client-go/dynamic"
-	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/cache"
 
 	"github.com/argoproj/argo-workflows/v3/workflow/common"
 	"github.com/argoproj/argo-workflows/v3/workflow/controller/indexes"
 	"github.com/argoproj/argo-workflows/v3/workflow/util"
+	"github.com/vingarcia/ksql"
 
 	"github.com/element84/swoop-go/pkg/db"
 )
@@ -42,12 +42,75 @@ type workflowEvent struct {
 	wf        interface{}
 }
 
-func (wf *workflowEvent) process() {
+func (wf *workflowEvent) process(acr *argoCabooseRunner) {
 	switch wf.eventType {
 	case started:
-		wfStart(wf.wf)
+		acr.wfStart(wf.wf)
 	case completed:
-		wfDone(wf.wf)
+		acr.wfDone(wf.wf)
+	}
+}
+
+type argoCabooseRunner struct {
+	configFile string
+	ctx        context.Context
+	db         *ksql.DB
+	k8sClient  *dynamic.DynamicClient
+	wg         *sync.WaitGroup
+	wfChan     chan workflowEvent
+}
+
+// TODO: look at errgroup to propagate errors back up
+//
+//	(https://pkg.go.dev/golang.org/x/sync/errgroup)
+func (acr *argoCabooseRunner) worker(id int) {
+	log.Printf("starting worker %d", id)
+	acr.wg.Add(1)
+	defer acr.wg.Done()
+
+	end := func() {
+		log.Printf("stopping worker %d", id)
+	}
+
+	for {
+		// first select is to give priority to ctx.Done
+		select {
+		case <-acr.ctx.Done():
+			end()
+			return
+		default:
+		}
+
+		select {
+		case wf := <-acr.wfChan:
+			wf.process(acr)
+		case <-acr.ctx.Done():
+			end()
+			return
+		}
+
+	}
+}
+
+func (acr *argoCabooseRunner) StartWorkers() {
+	for i := 0; i < maxWorkers; i++ {
+		go acr.worker(i)
+	}
+}
+
+func (acr *argoCabooseRunner) wfStart(wf interface{}) {
+	key, err := cache.MetaNamespaceKeyFunc(wf)
+	if err == nil {
+		log.Printf("Recevied started wf key: %s", key)
+		log.Printf("Obj: %v", wf.(*unstructured.Unstructured))
+	}
+}
+
+func (acr *argoCabooseRunner) wfDone(wf interface{}) {
+	key, err := cache.MetaNamespaceKeyFunc(wf)
+	if err == nil {
+		log.Printf("Recevied completed wf key: %s", key)
+		log.Printf("Obj: %v", wf.(*unstructured.Unstructured))
 	}
 }
 
@@ -57,30 +120,48 @@ type ArgoCaboose struct {
 	K8sConfigFlags *genericclioptions.ConfigFlags
 }
 
-func (c *ArgoCaboose) Run(ctx context.Context) error {
-	log.Printf("Database URL: %s", c.DatabaseConfig.Url())
+func (c *ArgoCaboose) newArgoCabooseRunner(ctx context.Context) (*argoCabooseRunner, error) {
+	// db connection
+	db, err := c.DatabaseConfig.Connect(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("Failed to connect to database: %s", err)
+	}
 
+	// kube client
 	restConfig, err := c.K8sConfigFlags.ToRESTConfig()
 	if err != nil {
-		return fmt.Errorf("Failed to get kubernetes config: %s", err)
+		return nil, fmt.Errorf("Failed to get kubernetes config: %s", err)
 	}
 
-	k8sClientSet, err := kubernetes.NewForConfig(restConfig)
+	client, err := dynamic.NewForConfig(restConfig)
 	if err != nil {
-		return fmt.Errorf("Could not create kubernetes client: %s", err)
+		return nil, err
 	}
 
-	vinfo, _ := k8sClientSet.Discovery().ServerVersion()
-	log.Printf("K8s version: %s", vinfo)
+	wfChan := make(chan workflowEvent)
+	var wg sync.WaitGroup
 
-	dynamicInterface, err := dynamic.NewForConfig(restConfig)
+	return &argoCabooseRunner{
+		configFile: c.ConfigFile,
+		ctx:        ctx,
+		db:         db,
+		k8sClient:  client,
+		wg:         &wg,
+		wfChan:     wfChan,
+	}, nil
+}
+
+func (c *ArgoCaboose) Run(ctx context.Context, cancel context.CancelFunc) error {
+	acr, err := c.newArgoCabooseRunner(ctx)
 	if err != nil {
 		return err
 	}
 
+	acr.StartWorkers()
+
 	// init wf informer
 	wfInformer := util.NewWorkflowInformer(
-		dynamicInterface,
+		acr.k8sClient,
 		// TODO: make namespace config parameter
 		"argo-workflows", // namespace name
 		workflowResyncPeriod,
@@ -95,13 +176,7 @@ func (c *ArgoCaboose) Run(ctx context.Context) error {
 		},
 	)
 
-	var wg sync.WaitGroup
-	wfChan := make(chan workflowEvent)
-	defer func() {
-		close(wfChan)
-	}()
-
-	addWorkflowInformerHandlers(wfInformer, wfChan)
+	addWorkflowInformerHandlers(wfInformer, acr.wfChan)
 	go wfInformer.Run(ctx.Done())
 
 	// wait until sync'd
@@ -112,13 +187,13 @@ func (c *ArgoCaboose) Run(ctx context.Context) error {
 		return fmt.Errorf("Timed out waiting for cache to sync")
 	}
 
-	for i := 0; i < maxWorkers; i++ {
-		go worker(i, ctx, &wg, wfChan)
-	}
-
-	<-ctx.Done()
 	// TODO: what happens if a worker hangs? Workers should timeout?
-	wg.Wait()
+	// we wait on the workers, as they are waiting on ctx
+	acr.wg.Wait()
+	// if all the workers exit we cancel to make sure everything else stops
+	// TODO may want to consider a solution like https://github.com/jackc/puddle
+	//      to ensure dying workers are revived
+	cancel()
 	return nil
 }
 
@@ -174,36 +249,4 @@ func addWorkflowInformerHandlers(
 			},
 		},
 	)
-}
-
-// TODO: look at errgroup to propagate errors back up (https://pkg.go.dev/golang.org/x/sync/errgroup)
-func worker(id int, ctx context.Context, wg *sync.WaitGroup, wfChan <-chan workflowEvent) {
-	log.Printf("starting worker %d", id)
-	wg.Add(1)
-	for {
-		select {
-		case wf := <-wfChan:
-			wf.process()
-		case <-ctx.Done():
-			log.Printf("stopping worker %d", id)
-			wg.Done()
-			return
-		}
-	}
-}
-
-func wfStart(wf interface{}) {
-	key, err := cache.MetaNamespaceKeyFunc(wf)
-	if err == nil {
-		log.Printf("Recevied started wf key: %s", key)
-		log.Printf("Obj: %v", wf.(*unstructured.Unstructured))
-	}
-}
-
-func wfDone(wf interface{}) {
-	key, err := cache.MetaNamespaceKeyFunc(wf)
-	if err == nil {
-		log.Printf("Recevied completed wf key: %s", key)
-		log.Printf("Obj: %v", wf.(*unstructured.Unstructured))
-	}
 }
