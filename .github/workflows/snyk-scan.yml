@@ -21,7 +21,7 @@ jobs:
     steps:
       - uses: actions/checkout@master
 
-      - name: Snyk Python report vulnerabilities
+      - name: Snyk Go report vulnerabilities
         uses: snyk/actions/golang@master
         continue-on-error: true # To make sure that SARIF upload gets called
         env:
@@ -30,12 +30,13 @@ jobs:
           args: --sarif-file-output=snyk.sarif
 
         # Push the Snyk Code results into GitHub Code Scanning tab
-      - name: Upload result to GitHub Code Scanning
-        uses: github/codeql-action/upload-sarif@v2
-        with:
-          sarif_file: snyk.sarif
+        # Uncomment after repository is public to enable GitHub Advanced Security
+#      - name: Upload result to GitHub Code Scanning
+#        uses: github/codeql-action/upload-sarif@v2
+#        with:
+#          sarif_file: snyk.sarif
 
-      - name: Snyk Python gatekeeper
+      - name: Snyk Go gatekeeper
         uses: snyk/actions/golang@master
         env:
           SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
