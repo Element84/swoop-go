@@ -10,6 +10,7 @@ import (
 	"syscall"
 	"time"
 
+	apierr "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/labels"
@@ -17,6 +18,8 @@ import (
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/tools/cache"
 
+	wfclientset "github.com/argoproj/argo-workflows/v3/pkg/client/clientset/versioned"
+	commonutil "github.com/argoproj/argo-workflows/v3/util"
 	"github.com/argoproj/argo-workflows/v3/workflow/common"
 	"github.com/argoproj/argo-workflows/v3/workflow/controller/indexes"
 	"github.com/argoproj/argo-workflows/v3/workflow/util"
@@ -171,12 +174,13 @@ func (wf *workflowEvent) process(acr *argoCabooseRunner) {
 }
 
 type argoCabooseRunner struct {
-	configFile string
-	ctx        context.Context
-	db         *pgxpool.Pool
-	k8sClient  *dynamic.DynamicClient
-	wg         *sync.WaitGroup
-	wfChan     chan workflowEvent
+	configFile  string
+	ctx         context.Context
+	db          *pgxpool.Pool
+	wfClientSet wfclientset.Interface
+	dynIface    *dynamic.DynamicClient
+	wg          *sync.WaitGroup
+	wfChan      chan workflowEvent
 }
 
 // TODO: look at errgroup to propagate errors back up
@@ -219,35 +223,78 @@ func (acr *argoCabooseRunner) StartWorkers() {
 	}
 }
 
+// TODO: how to handle retries?
 func (acr *argoCabooseRunner) wfStart(wf *workflowEvent) {
 	parsed, err := wf.extractProps()
 	if err != nil {
 		log.Printf("%s", err)
 		return
 	}
-	log.Printf("Started workflow props: %v", parsed)
+
 	_, err = parsed.toStartEvent().insert(acr.ctx, acr.db)
 	if err != nil {
 		log.Printf("%s", err)
 	}
+	log.Printf("Inserted start event for workflow: '%s'", parsed.workflowUUID)
 }
 
+// TODO: how to handle retries?
 func (acr *argoCabooseRunner) wfDone(wf *workflowEvent) {
 	parsed, err := wf.extractProps()
 	if err != nil {
 		log.Printf("%s", err)
 		return
 	}
-	log.Printf("Completed workflow props: %v", parsed)
 	_, err = parsed.toStartEvent().insert(acr.ctx, acr.db)
 	if err != nil {
 		log.Printf("%s", err)
 		return
 	}
+	log.Printf("Inserted start event for workflow: '%s'", parsed.workflowUUID)
+
 	_, err = parsed.toEndEvent().insert(acr.ctx, acr.db)
 	if err != nil {
 		log.Printf("%s", err)
+		return
 	}
+	log.Printf("Inserted end event for workflow: '%s'", parsed.workflowUUID)
+
+	// TODO: do we have a possible race here? If we delete the workflow before
+	// argo has finished with cleanup or other post-workflow tasks, will it
+	// lose the state it needs to finish them? How can we know the workflow is
+	// good to clean up?
+	err = acr.deleteWorkflow(wf)
+	if err != nil {
+		log.Printf("%s", err)
+	}
+}
+
+func (acr *argoCabooseRunner) deleteWorkflow(wf *workflowEvent) error {
+	key, err := cache.MetaNamespaceKeyFunc(wf.wf)
+	if err != nil {
+		return err
+	}
+
+	namespace, name, _ := cache.SplitMetaNamespaceKey(key)
+
+	err = acr.wfClientSet.ArgoprojV1alpha1().Workflows(namespace).Delete(
+		acr.ctx,
+		name,
+		metav1.DeleteOptions{
+			PropagationPolicy: commonutil.GetDeletePropagation(),
+		},
+	)
+	if err != nil {
+		if apierr.IsNotFound(err) {
+			log.Printf("Workflow already deleted '%s'", key)
+		} else {
+			return err
+		}
+	} else {
+		log.Printf("Successfully requested to delete workflow '%s'", key)
+	}
+
+	return nil
 }
 
 type ArgoCaboose struct {
@@ -269,21 +316,20 @@ func (c *ArgoCaboose) newArgoCabooseRunner(ctx context.Context) (*argoCabooseRun
 		return nil, fmt.Errorf("Failed to get kubernetes config: %s", err)
 	}
 
-	client, err := dynamic.NewForConfig(restConfig)
-	if err != nil {
-		return nil, err
-	}
+	wfClientSet := wfclientset.NewForConfigOrDie(restConfig)
+	dynamicInterface := dynamic.NewForConfigOrDie(restConfig)
 
 	wfChan := make(chan workflowEvent)
 	var wg sync.WaitGroup
 
 	return &argoCabooseRunner{
-		configFile: c.ConfigFile,
-		ctx:        ctx,
-		db:         db,
-		k8sClient:  client,
-		wg:         &wg,
-		wfChan:     wfChan,
+		configFile:  c.ConfigFile,
+		ctx:         ctx,
+		db:          db,
+		wfClientSet: wfClientSet,
+		dynIface:    dynamicInterface,
+		wg:          &wg,
+		wfChan:      wfChan,
 	}, nil
 }
 
@@ -297,7 +343,7 @@ func (c *ArgoCaboose) Run(ctx context.Context, cancel context.CancelFunc) error 
 
 	// init wf informer
 	wfInformer := util.NewWorkflowInformer(
-		acr.k8sClient,
+		acr.dynIface,
 		// TODO: make namespace config parameter
 		"argo-workflows", // namespace name
 		workflowResyncPeriod,
