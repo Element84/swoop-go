@@ -5,11 +5,11 @@ import (
 	"fmt"
 	"log"
 
-	"github.com/jackc/pgx/v4/pgxpool"
+	pgxuuid "github.com/jackc/pgx-gofrs-uuid"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
-	"github.com/vingarcia/ksql"
-	"github.com/vingarcia/ksql/adapters/kpgx"
 )
 
 type DatabaseConfig struct {
@@ -34,27 +34,25 @@ func (db *DatabaseConfig) Url() string {
 	)
 }
 
-func (db *DatabaseConfig) Connect(ctx context.Context) (*ksql.DB, error) {
+func (db *DatabaseConfig) Connect(ctx context.Context) (*pgxpool.Pool, error) {
 	log.Printf("Database URL: %s", db.Url())
 	return Connect(ctx, db.Url())
 }
 
-func Connect(ctx context.Context, dbUrl string) (*ksql.DB, error) {
-	// getting the config allows us to modify it if/when we need
-	// (i.e., we could in the future support more config parameters,
-	// see https://pkg.go.dev/github.com/jackc/pgx/v4/pgxpool#Config)
+func Connect(ctx context.Context, dbUrl string) (*pgxpool.Pool, error) {
+	// we could in the future support more config parameters, see
+	// https://pkg.go.dev/github.com/jackc/pgx/v4/pgxpool#Config
 	config, err := pgxpool.ParseConfig(dbUrl)
 	if err != nil {
 		return nil, err
 	}
 
-	pool, err := pgxpool.ConnectConfig(ctx, config)
-	if err != nil {
-		return nil, err
+	config.AfterConnect = func(ctx context.Context, conn *pgx.Conn) error {
+		pgxuuid.Register(conn.TypeMap())
+		return nil
 	}
 
-	db, err := kpgx.NewFromPgxPool(pool)
-	return &db, err
+	return pgxpool.NewWithConfig(ctx, config)
 }
 
 func (db *DatabaseConfig) AddFlags(fs *pflag.FlagSet) {
