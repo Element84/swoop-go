@@ -30,11 +30,10 @@ jobs:
           args: --sarif-file-output=snyk.sarif
 
         # Push the Snyk Code results into GitHub Code Scanning tab
-        # Uncomment after repository is public to enable GitHub Advanced Security
-#      - name: Upload result to GitHub Code Scanning
-#        uses: github/codeql-action/upload-sarif@v2
-#        with:
-#          sarif_file: snyk.sarif
+      - name: Upload result to GitHub Code Scanning
+        uses: github/codeql-action/upload-sarif@v2
+        with:
+          sarif_file: snyk.sarif
 
       - name: Snyk Go gatekeeper
         uses: snyk/actions/golang@master
