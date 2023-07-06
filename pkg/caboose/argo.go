@@ -299,13 +299,12 @@ func (acr *argoCabooseRunner) deleteWorkflow(wf *workflowEvent) error {
 
 type ArgoCaboose struct {
 	ConfigFile     string
-	DatabaseConfig *db.DatabaseConfig
 	K8sConfigFlags *genericclioptions.ConfigFlags
 }
 
 func (c *ArgoCaboose) newArgoCabooseRunner(ctx context.Context) (*argoCabooseRunner, error) {
 	// db connection
-	db, err := c.DatabaseConfig.Connect(ctx)
+	db, err := db.Connect(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("Failed to connect to database: %s", err)
 	}
