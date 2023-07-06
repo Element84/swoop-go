@@ -18,3 +18,58 @@ services:
       SWOOP_S3_ENDPOINT: "${SWOOP_S3_ENDPOINT:-http://127.0.0.1:9000}"
       SWOOP_BUCKET_NAME: "${SWOOP_BUCKET_NAME:-swoop}"
       SWOOP_EXECUTION_DIR: "${SWOOP_EXECUTION_DIR:-s3://swoop/execution}"
+
+  server:
+    image: "rancher/k3s:${K3S_VERSION:-latest}"
+    # --tls-san server adds name "server" to TLS cert so the cert validates
+    # when accessing the API via the docker name like https://server:6443
+    command: server --tls-san server --https-listen-port ${K8S_PORT:-6443}
+    tmpfs:
+      - /run
+      - /var/run
+    ulimits:
+      nproc: 65535
+      nofile:
+        soft: 65535
+        hard: 65535
+    privileged: true
+    restart: always
+    environment:
+      - K3S_TOKEN=secret
+      - K3S_KUBECONFIG_OUTPUT=/output/kubeconfig.yaml
+      - K3S_KUBECONFIG_MODE=666
+    volumes:
+      # This is just so that we get the kubeconfig file out
+      - .:/output
+    ports:
+      - ${K8S_PORT:-6443}:${K8S_PORT:-6443}  # Kubernetes API Server
+
+  agent:
+    image: "rancher/k3s:${K3S_VERSION:-latest}"
+    tmpfs:
+      - /run
+      - /var/run
+    ulimits:
+      nproc: 65535
+      nofile:
+        soft: 65535
+        hard: 65535
+    privileged: true
+    restart: always
+    environment:
+      - K3S_URL=https://server:${K8S_PORT:-6443}
+      - K3S_TOKEN=secret
+
+  cluster-setup:
+    image: alpine/k8s:1.27.3
+    depends_on:
+      - server
+      - agent
+    restart: "no"
+    volumes:
+      - .:/opt/swoop-go
+    environment:
+      - ARGO_VERSION=latest
+      - KUBECONFIG=/opt/swoop-go/kubeconfig.yaml
+      - SERVER_URL=https://server:${K8S_PORT:-6443}
+    entrypoint: [ "sh", "/opt/swoop-go/bin/setup-cluster.sh" ]
