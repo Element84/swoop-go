@@ -83,6 +83,7 @@ source .env
 #   -V       recreates any volumes instead of reusing data
 #   -d       run the composed images in daemon mode rather than in the foreground
 docker compose up --build -V -d
+
 # Run a swoop command interactively on the running swoop-caboose container
-docker exec -it $(docker ps -aqf "name=swoop-caboose") swoop
+docker compose exec swoop-caboose swoop
 ```

@@ -1,7 +1,13 @@
-FROM golang:1.20-bookworm
+FROM golang:1.20-bookworm as APP
 
 WORKDIR /opt/swoop-go
 
+COPY . /opt/swoop-go
+
+# Build swoop
+RUN go build -o swoop
+
+FROM golang:1.20-bookworm
 
 ENV SWOOP_DATABASE_HOST=$SWOOP_DATABASE_HOST  \
     SWOOP_DATABASE_PORT=$SWOOP_DATABASE_PORT  \
@@ -17,9 +23,10 @@ ENV SWOOP_DATABASE_HOST=$SWOOP_DATABASE_HOST  \
 
 RUN env
 
-COPY . /opt/swoop-go
+WORKDIR /opt/swoop-go
 
-# Build swoop
-RUN go build -o swoop
+# copy only swoop binary to container image
+COPY --from=APP /opt/swoop-go/swoop /opt/swoop-go/
 
+# add binary to image path
 ENV PATH=/opt/swoop-go:$PATH
