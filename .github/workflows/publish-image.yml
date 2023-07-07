@@ -26,6 +26,7 @@ jobs:
         run: |
           VERSION=$(git describe --tags --abbrev=8 --dirty --always --long)
           TAGS=("${VERSION}")
+          echo "$VERSION"
 
           if [ -n "${{ github.event.release.tag_name }}" ]; then
             MAJOR="$(<<<"${VERSION}" cut -d '.' -f 1)"
