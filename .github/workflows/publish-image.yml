@@ -21,18 +21,10 @@ jobs:
     steps:
       - uses: actions/checkout@main
 
-      - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v4
-        with:
-          python-version: '3.x'
-
-      - name: Install dependencies
-        run: pip install setuptools-scm
-
       - name: Get image tags
         id: image_tags
         run: |
-          VERSION="$(python -m setuptools_scm | tr + -)"
+          VERSION=$(git describe --tags --abbrev=8 --dirty --always --long)
           TAGS=("${VERSION}")
 
           if [ -n "${{ github.event.release.tag_name }}" ]; then
