@@ -41,3 +41,23 @@ jobs:
           SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
         with:
           args: --severity-threshold=high # Forces fail on high-severity vulnerabilities
+
+      - name: Snyk Docker report vulnerabilities
+        uses: snyk/actions/docker@master
+        if: success() || failure()
+        env:
+          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+        with:
+          image: python
+          args:
+            --file=Dockerfile
+            --sarif-file-output=snyk.sarif
+            --policy-path=.snyk
+            --severity-threshold=critical # Forces fail on critical-severity vulnerabilities
+
+        # Push the Snyk Code results into GitHub Code Scanning tab
+      - name: Upload docker scan result to GitHub Code Scanning
+        uses: github/codeql-action/upload-sarif@v2
+        if: success() || failure()
+        with:
+          sarif_file: snyk.sarif

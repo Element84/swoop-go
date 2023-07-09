@@ -65,3 +65,25 @@ services for testing, including but not limited to:
 * a kubernetes cluster running Argo Workflows
 * a Postgres instance with [a SWOOP database](https://github.com/Element84/swoop/tree/main/db)
 * MinIO or some other such S3-compatible object storage service
+
+### Running `swoop-caboose` container
+
+[`./Dockerfile`](./Dockerfile) defines the build steps for a swoop-cabose
+container.  To make using the docker container more convenient, a `docker-compose.yml`
+file is provided in the project root. The repo contents are installed on `/opt/swoop/`
+inside the container to help facilitate swoop operations and testing using
+the included utilities. For example, to bring up swoop:
+
+```shell
+# load the .env vars
+source .env
+
+# bring up the swoop-cabose container in the background
+#   --build  forces rebuild of the container in case changes have been made
+#   -V       recreates any volumes instead of reusing data
+#   -d       run the composed images in daemon mode rather than in the foreground
+docker compose up --build -V -d
+
+# Run a swoop command interactively on the running swoop-caboose container
+docker compose exec swoop-caboose swoop
+```
