@@ -1,0 +1,134 @@
+handlers:
+  argoHandler:
+    type: argoWorkflowHandler
+    #server-url: https://kubernetes:6443
+    #token: {secrets.argo_token}
+
+  cirrusHandler:
+    type: cirrusWorkflowHandler
+    #sqs-url: https://sqs.aws.com/0142354653636::sqs::queue
+
+  # We believe it is best to re-template the request
+  # (at least with regard to secrets) JIT for every request execution
+  publishS3Handler:
+    type: httpHandler
+    url: https://{secrets.minio-user}:{secrets.minio-password}@our-minio:9000
+    # we _can_ template here, but it means every callback will use the same template
+    # we can use conditional operators in the template to define differences if any exist
+    requestBody: |
+      {
+        "fixed": "a_value",
+        "name": "{{ .parameters.workflow_name -}}",
+        "date": "{{ .parameters.feature.properties.datetime -}}"
+      }
+    operation: POST
+    secrets:
+      # simplest approach for secret renewal is to have a ttl
+      # and periodically re-resolve the secret values, but does mean
+      # invalid secrets may be used for some time until the ttl expires
+      #
+      # how to handle secrets that need to resolve a token,
+      # have some other initialization step, or are of some built-in
+      # limited duration?
+      - name: user
+        type: file
+        path: /secrets-mount/username-secret
+        ttl: 1200
+    headers:
+      - name: Authorization
+        value: "Basic {{ .secrets.user }} {{ .secrets.password}}"
+      - Content-Type: application/json
+      - X-Workflow-Name: "{{ .parameters.workflow_name }}"
+    backoff:
+      retries: 10
+      seconds: 5
+      factor: 2
+      max: 25
+    errors:
+      - status: 400
+        retryable: false
+      - status: 400
+        message: ".*timed out.*"
+        retryable: true
+    # parameters are extracted by caboose from input.json, output.json, or the workflow resource
+    # the parameters json is written to object storage with a key like
+    # /callbacks/<action_uuid>/parameters.json
+    # conductor will have the callback action_uuid so will be able to load the parameters.json
+    # from object storage and use that for templating at request time
+    parameters:
+      - name: workflow_name
+        # types?
+        # how do we distinguish between default being set to null and it not being set at all?
+        default: a_value # setting a default makes a parameter not required
+      - name: feature
+
+conductors:
+  instance-a:
+    handlers:
+      - argoHandler
+      - publishS3Handler
+
+callbacks:
+  publishS3Push: &callbacks-publishS3Push
+    handler: publishS3Handler
+    # per_feature creates a callback action for each feature in the output
+    type: perFeature
+    on:
+      - always
+      - never
+      - not "success"
+      - "failed"
+      - "aborted"
+      - "timed_out"
+    feature_filter: <jsonpath like workflow chaining filter>
+    parameters:
+      - name: workflow_name
+        # TODO: need to add the workflow ID as a label on the workflow resource
+        # this property name is invalid
+        # Note these are _not_ templates, these are "select a value out of json"
+        # see kubectl --sort-by=
+        value: "{{ .workflow.resource.name -}}"
+      - name: feature
+        value: "{{ .feature }}"
+
+workflows:
+  mirror:
+    description: "A workflow to copy STAC items into a local mirror"
+    version: 2
+    handler: argoHandler
+    argoTemplate: workflowtemplate/mirror-workflow
+    cacheKeyHashIncludes:
+      - .features[].id
+      - .features[].collection
+    cacheKeyHashExcludes: []
+    callbacks:
+      publish_s3_push: << *callbacks-publishS3Push
+      bulkUpdate:
+        handler: bulkUpdateHandler
+        # single creates a single callback action
+        type: single
+        when: ${workflow.status} == "success"
+        # We could provide a filter, but if we want all items we can omit it
+        # feature_filter: <jsonpath like workflow chaining filter>
+        enabled: false
+  cirrus-example:
+    callbacks:
+      publish_s3_push: << *callbacks-publishS3Push
+    title: "Cirrus example workflow"
+    description: "An example workflow config for a cirrus workflow"
+    version: 1
+    handler: cirrusHandler
+    sfnArn: arn:aws:states:us-west-2:09876543210:stateMachine:cirrus-example
+    cacheKeyHashIncludes:
+      - .features[].id
+      - .features[].collection
+    cacheKeyHashExcludes: []
+    links:
+      - href: https://example.com/repo
+        rel: external
+        type: text/html
+        title: "source repository"
+      - href: https://example.com/docs
+        rel: external
+        type: text/html
+        title: "process documentation"
