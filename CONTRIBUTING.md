@@ -63,16 +63,12 @@ Note that some of the exposed commands may require one or more external
 services for testing, including but not limited to:
 
 * a kubernetes cluster running Argo Workflows
-* a Postgres instance with [a SWOOP database](https://github.com/Element84/swoop/tree/main/db)
+* a Postgres instance with [a SWOOP database](https://github.com/Element84/swoop-db)
 * MinIO or some other such S3-compatible object storage service
 
-### Running `swoop-caboose` container
-
-[`./Dockerfile`](./Dockerfile) defines the build steps for a swoop-cabose
-container.  To make using the docker container more convenient, a `docker-compose.yml`
-file is provided in the project root. The repo contents are installed on `/opt/swoop/`
-inside the container to help facilitate swoop operations and testing using
-the included utilities. For example, to bring up swoop:
+A docker compose config is provided to simplify running these services, and the
+following command will launch three docker containers supplying the serivces
+above:
 
 ```shell
 # load the .env vars
@@ -84,6 +80,62 @@ source .env
 #   -d       run the composed images in daemon mode rather than in the foreground
 docker compose up --build -V -d
 
+```
+
+Note that the kubernetes cluster has Argo Workflows custom resource definitions
+(CRDs) loaded, but does not have the Argo Workflows server or controller
+resources. The aim is to provide an environment that will allow manual or
+automated workflow resource creation/updates without having to contend with
+Argo Workflows making state changes or attempting to run any workflows.
+
+### Running `swoop-caboose` container
+
+[`./Dockerfile`](./Dockerfile) defines the build steps for a swoop-cabose
+container.  To make using the docker container more convenient, the project's
+docker-compose will also build and run this container. The repo contents are
+installed on `/opt/swoop/` inside the container to help facilitate swoop
+operations and testing using the included utilities.
+
+To run the swoop cli after starting the docker compose (detailed above):
+
+```shell
 # Run a swoop command interactively on the running swoop-caboose container
 docker compose exec swoop-caboose swoop
 ```
+
+## Manually testing `swoop caboose argo`
+
+The `argo` version of the `swoop caboose` command requires the full docker
+compose environment for testing. With that environment running, the service can
+be started (assuming from the root of the swoop-go repo):
+
+```shell
+go run caboose argo -f fixtures/swoop-config.yml
+```
+
+Template for simplified workflow resources are included in the `./fixtures`
+directory. They can be applied with `sed` and `kubectl`. Here is an example
+testing a workflow from the init stage (just created, hasn't been picked up by
+the Argo Workflows controller yet), through started and on to successful:
+
+```shell
+UUID="$(uuidgen | tr A-Z a-z)"
+<./fixtures/resource/init.json sed "s/\${UUID}/${UUID}/" \
+    | kubectl --kubeconfig=./kubeconfig.yaml apply -f -
+<./fixtures/resource/started.json sed "s/\${UUID}/${UUID}/" \
+    | kubectl --kubeconfig=./kubeconfig.yaml apply -f -
+<./fixtures/resource/successful.json sed "s/\${UUID}/${UUID}/" \
+    | kubectl --kubeconfig=./kubeconfig.yaml apply -f -
+```
+
+Or if you want to test a workflow simply showing up in the failed state:
+
+```shell
+UUID="$(uuidgen | tr A-Z a-z)"
+<./fixtures/resource/failed.json sed "s/\${UUID}/${UUID}/" \
+    | kubectl --kubeconfig=./kubeconfig.yaml apply -f -
+```
+
+Testing the start behaivor with caboose is also valuable. Try creating workflow
+resources with caboose stopped, then start it and ensure it shows the proper
+event handling.

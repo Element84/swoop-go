@@ -1,0 +1,34 @@
+{
+  "apiVersion": "argoproj.io/v1alpha1",
+  "kind": "Workflow",
+  "metadata": {
+    "annotations": {
+      "workflows.argoproj.io/pod-name-format": "v2"
+    },
+    "generateName": "mirror-workflow-",
+    "labels": {
+      "workflows.argoproj.io/completed": "false",
+      "workflows.argoproj.io/phase": "Running",
+      "workflows.argoproj.io/workflow-template": "mirror-workflow"
+    },
+    "name": "${UUID}"
+  },
+  "spec": {
+    "arguments": {}
+  },
+  "status": {
+    "conditions": [
+      {
+        "status": "True",
+        "type": "PodRunning"
+      },
+      {
+        "status": "False",
+        "type": "Completed"
+      }
+    ],
+    "finishedAt": null,
+    "phase": "Running",
+    "startedAt": "2023-04-25T23:16:10Z"
+  }
+}

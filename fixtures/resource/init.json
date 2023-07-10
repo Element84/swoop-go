@@ -1,0 +1,19 @@
+{
+    "apiVersion": "argoproj.io/v1alpha1",
+    "kind": "Workflow",
+    "metadata": {
+        "creationTimestamp": "2023-07-10T22:20:41Z",
+        "generateName": "mirror-workflow-",
+        "labels": {
+            "workflows.argoproj.io/workflow-template": "mirror-workflow"
+        },
+        "name": "${UUID}"
+    },
+    "spec": {
+        "arguments": {}
+    },
+    "status": {
+        "finishedAt": null,
+        "startedAt": null
+    }
+}
