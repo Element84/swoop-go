@@ -340,11 +340,15 @@ func (c *ArgoCaboose) Run(ctx context.Context, cancel context.CancelFunc) error 
 
 	acr.StartWorkers()
 
+	namespace := ""
+	if c.K8sConfigFlags.Namespace != nil {
+		namespace = *c.K8sConfigFlags.Namespace
+	}
+
 	// init wf informer
 	wfInformer := util.NewWorkflowInformer(
 		acr.dynIface,
-		// TODO: make namespace config parameter
-		"argo-workflows", // namespace name
+		namespace, // namespace name
 		workflowResyncPeriod,
 		func(options *metav1.ListOptions) {
 			labelSelector := labels.NewSelector().

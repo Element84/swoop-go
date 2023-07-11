@@ -110,7 +110,7 @@ compose environment for testing. With that environment running, the service can
 be started (assuming from the root of the swoop-go repo):
 
 ```shell
-go run caboose argo -f fixtures/swoop-config.yml
+go run . caboose argo -f fixtures/swoop-config.yml --kubeconfig=./kubeconfig.yaml
 ```
 
 Template for simplified workflow resources are included in the `./fixtures`
@@ -119,11 +119,18 @@ testing a workflow from the init stage (just created, hasn't been picked up by
 the Argo Workflows controller yet), through started and on to successful:
 
 ```shell
+# create a UUID
 UUID="$(uuidgen | tr A-Z a-z)"
+
+# create a workflow resource in the init stage
 <./fixtures/resource/init.json sed "s/\${UUID}/${UUID}/" \
     | kubectl --kubeconfig=./kubeconfig.yaml apply -f -
+
+# update the workflow resource to be started
 <./fixtures/resource/started.json sed "s/\${UUID}/${UUID}/" \
     | kubectl --kubeconfig=./kubeconfig.yaml apply -f -
+
+# update the workflow resource to be successful
 <./fixtures/resource/successful.json sed "s/\${UUID}/${UUID}/" \
     | kubectl --kubeconfig=./kubeconfig.yaml apply -f -
 ```
