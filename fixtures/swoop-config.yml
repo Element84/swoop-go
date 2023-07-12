@@ -59,6 +59,7 @@ handlers:
       - name: workflow_name
         # types?
         # how do we distinguish between default being set to null and it not being set at all?
+        required: false
         default: a_value # setting a default makes a parameter not required
       - name: feature
 
@@ -69,17 +70,17 @@ conductors:
       - publishS3Handler
 
 callbacks:
-  publishS3Push: &callbacks-publishS3Push
+  publishS3Push: &callbacksPublishS3Push
     handler: publishS3Handler
     # per_feature creates a callback action for each feature in the output
     type: perFeature
     on:
-      - always
-      - never
-      - not "success"
+      - "success"
       - "failed"
       - "aborted"
       - "timed_out"
+    notOn:
+      - "success"
     feature_filter: <jsonpath like workflow chaining filter>
     parameters:
       - name: workflow_name
@@ -90,6 +91,7 @@ callbacks:
         value: "{{ .workflow.resource.name -}}"
       - name: feature
         value: "{{ .feature }}"
+    enabled: true
 
 workflows:
   mirror:
@@ -102,7 +104,8 @@ workflows:
       - .features[].collection
     cacheKeyHashExcludes: []
     callbacks:
-      publish_s3_push: << *callbacks-publishS3Push
+      publishS3Push:
+        <<: *callbacksPublishS3Push
       bulkUpdate:
         handler: bulkUpdateHandler
         # single creates a single callback action
@@ -113,7 +116,8 @@ workflows:
         enabled: false
   cirrus-example:
     callbacks:
-      publish_s3_push: << *callbacks-publishS3Push
+      publishS3Push:
+        <<: *callbacksPublishS3Push
     title: "Cirrus example workflow"
     description: "An example workflow config for a cirrus workflow"
     version: 1
