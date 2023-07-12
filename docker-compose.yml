@@ -84,6 +84,25 @@ services:
     ports:
       - "${PGPORT:-5432}:5432"
 
+  db-setup:
+    image: quay.io/element84/swoop-db:latest
+    depends_on:
+      - postgres
+    restart: "no"
+    environment:
+      - PGHOST=postgres
+      - PGDATABASE=${PGDATABASE:-swoop}
+      - PGUSER=${PGUSER:-postgres}
+      - PGPASSWORD=${PGPASSWORD:-password}
+    entrypoint:
+      - "sh"
+      - "-c"
+      - |
+        for i in $$(seq 15); do
+          sleep 2
+          swoop-db up && echo "SUCCESS: swoop-db applied migrations" && break
+        done
+
   minio:
     image: quay.io/minio/minio
     ports:
