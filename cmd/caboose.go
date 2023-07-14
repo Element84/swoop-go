@@ -8,6 +8,7 @@ import (
 
 	"github.com/element84/swoop-go/pkg/caboose"
 	"github.com/element84/swoop-go/pkg/cmdutil"
+	"github.com/element84/swoop-go/pkg/s3"
 )
 
 func init() {
@@ -23,6 +24,8 @@ func mkCabooseCmd() *cobra.Command {
 		Use:   "caboose",
 		Short: "swoop-caboose commands for state updates",
 	}
+	s3Config := &s3.S3Driver{}
+	s3Config.AddFlags(cmd.PersistentFlags())
 	cmd.PersistentFlags().StringVarP(
 		&config, "config-file", "f", "", "swoop-caboose config file path (required; SWOOP_CONFIG_FILE)",
 	)
