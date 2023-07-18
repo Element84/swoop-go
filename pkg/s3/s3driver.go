@@ -6,7 +6,6 @@ import (
 	// "github.com/argoproj/pkg/file"
 	// s3client "github.com/argoproj/pkg/s3"
 
-	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 )
 
@@ -32,7 +31,6 @@ func (s3 *S3Driver) AddFlags(fs *pflag.FlagSet) {
 		"",
 		"swoop s3 endpoint (required; SWOOP_S3_ENDPOINT)",
 	)
-	cobra.MarkFlagRequired(fs, "s3-endpoint")
 	fs.StringVar(
 		&s3.Region,
 		"s3-region",
@@ -51,14 +49,12 @@ func (s3 *S3Driver) AddFlags(fs *pflag.FlagSet) {
 		"",
 		"swoop s3 access key (required; SWOOP_S3_ACCESS_KEY)",
 	)
-	cobra.MarkFlagRequired(fs, "s3-access-key")
 	fs.StringVar(
 		&s3.SecretKey,
 		"s3-secret-key",
 		"",
 		"swoop s3 secret key (required; SWOOP_S3_SECRET_KEY)",
 	)
-	cobra.MarkFlagRequired(fs, "s3-role-arn")
 	fs.StringVar(
 		&s3.RoleARN,
 		"s3-role-arn",
