@@ -90,26 +90,26 @@ func (s *dbEvent) insert(ctx context.Context, db *pgxpool.Pool) (pgconn.CommandT
 	)
 }
 
-type WorkflowProperties struct {
+type workflowProperties struct {
 	startedAt    time.Time
 	finishedAt   time.Time
 	workflowUUID uuid.UUID
 	templateName string
-	Status       string
+	status       string
 	errorMsg     string
 }
 
-func (p *WorkflowProperties) statusFromPhase(phase string) {
+func (p *workflowProperties) statusFromPhase(phase string) {
 	if phase == "Succeeded" {
-		p.Status = "SUCCESSFUL"
+		p.status = "SUCCESSFUL"
 	} else if phase == "Error" {
-		p.Status = "FAILED"
+		p.status = "FAILED"
 	} else {
-		p.Status = strings.ToUpper(phase)
+		p.status = strings.ToUpper(phase)
 	}
 }
 
-func (p *WorkflowProperties) toStartEvent() *dbEvent {
+func (p *workflowProperties) toStartEvent() *dbEvent {
 	return &dbEvent{
 		actionUUID: p.workflowUUID,
 		eventTime:  p.startedAt,
@@ -117,17 +117,17 @@ func (p *WorkflowProperties) toStartEvent() *dbEvent {
 	}
 }
 
-func (p *WorkflowProperties) toEndEvent() *dbEvent {
+func (p *workflowProperties) toEndEvent() *dbEvent {
 	return &dbEvent{
 		actionUUID: p.workflowUUID,
 		eventTime:  p.finishedAt,
-		status:     p.Status,
+		status:     p.status,
 		errorMsg:   p.errorMsg,
 	}
 }
 
-func (p *WorkflowProperties) runCallback(cb *config.Callback) bool {
-	if utils.Contains(cb.On, p.Status) && !utils.Contains(cb.NotOn, p.Status) {
+func (p *workflowProperties) runCallback(cb *config.Callback) bool {
+	if utils.Contains(cb.On, p.status) && !utils.Contains(cb.NotOn, p.status) {
 		return true
 	} else {
 		return false
@@ -146,7 +146,7 @@ type workflowEvent struct {
 	wf        interface{}
 }
 
-func (wf *workflowEvent) extractProps() (*WorkflowProperties, error) {
+func (wf *workflowEvent) extractProps() (*workflowProperties, error) {
 	un, ok := wf.wf.(*unstructured.Unstructured)
 	if !ok {
 		return nil, fmt.Errorf("failed to parse workflow: %v", wf.wf)
@@ -157,7 +157,7 @@ func (wf *workflowEvent) extractProps() (*WorkflowProperties, error) {
 	start, _, _ := unstructured.NestedString(status, "startedAt")
 	finish, _, _ := unstructured.NestedString(status, "finishedAt")
 
-	p := &WorkflowProperties{
+	p := &workflowProperties{
 		workflowUUID: uuid.FromStringOrNil(un.GetName()),
 		templateName: labels[common.LabelKeyWorkflowTemplate],
 	}

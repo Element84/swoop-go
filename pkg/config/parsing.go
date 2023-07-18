@@ -166,8 +166,3 @@ func Parse(configFile string) (*SwoopConfig, error) {
 	}
 	return conf, nil
 }
-
-func main() {
-	Parse("./fixtures/swoop-config.yml")
-
-}

@@ -18,7 +18,7 @@ handlers:
     requestBody: |
       {
         "fixed": "a_value",
-        "name": "{{ .parameters.workflow_name -}}",
+        "name": "{{ .parameters.workflowName -}}",
         "date": "{{ .parameters.feature.properties.datetime -}}"
       }
     operation: POST
@@ -37,7 +37,7 @@ handlers:
     headers:
       Authorization: "Basic {{ .secrets.user }} {{ .secrets.password}}"
       Content-Type: "application/json"
-      X-Workflow-Name: "{{ .parameters.workflow_name }}"
+      X-Workflow-Name: "{{ .parameters.workflowName }}"
     backoff:
       retries: 10
       seconds: 5
@@ -55,7 +55,7 @@ handlers:
     # conductor will have the callback action_uuid so will be able to load the parameters.json
     # from object storage and use that for templating at request time
     parameters:
-      workflow_name:
+      workflowName:
         # types?
         # how do we distinguish between default being set to null and it not being set at all?
         default: a_value # setting a default makes a parameter not required
@@ -79,9 +79,9 @@ callbacks:
       - "timed_out"
     notOn:
       - "success"
-    featureFilter: <jsonpath like workflow chaining filter>
+    featureFilter: "@.id =~ 'fake*' & @.properties.gsd <= 0"
     parameters:
-      workflow_name:
+      workflowName:
         # TODO: need to add the workflow ID as a label on the workflow resource
         # this property name is invalid
         # Note these are _not_ templates, these are "select a value out of json"
@@ -109,7 +109,7 @@ workflows:
         # single creates a single callback action
         type: single
         # We could provide a filter, but if we want all items we can omit it
-        # featureFilter: <jsonpath like workflow chaining filter>
+        # featureFilter: "@.id =~ 'fake*' & @.properties.gsd <= 0"
         enabled: false
   cirrus-example:
     callbacks:
