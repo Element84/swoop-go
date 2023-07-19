@@ -27,7 +27,9 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/element84/swoop-go/pkg/config"
 	"github.com/element84/swoop-go/pkg/db"
+	"github.com/element84/swoop-go/pkg/utils"
 )
 
 const (
@@ -124,6 +126,14 @@ func (p *workflowProperties) toEndEvent() *dbEvent {
 	}
 }
 
+func (p *workflowProperties) runCallback(cb *config.Callback) bool {
+	if utils.Contains(cb.On, p.status) && !utils.Contains(cb.NotOn, p.status) {
+		return true
+	} else {
+		return false
+	}
+}
+
 type wfEventType int
 
 const (
@@ -139,7 +149,7 @@ type workflowEvent struct {
 func (wf *workflowEvent) extractProps() (*workflowProperties, error) {
 	un, ok := wf.wf.(*unstructured.Unstructured)
 	if !ok {
-		return nil, fmt.Errorf("Failed to parse workflow: %v", wf.wf)
+		return nil, fmt.Errorf("failed to parse workflow: %v", wf.wf)
 	}
 
 	labels := un.GetLabels()
@@ -158,7 +168,7 @@ func (wf *workflowEvent) extractProps() (*workflowProperties, error) {
 	p.errorMsg, _, _ = unstructured.NestedString(status, "message")
 
 	if p.workflowUUID.IsNil() || p.templateName == "" {
-		return nil, fmt.Errorf("Unknown workflow: %v", wf.wf)
+		return nil, fmt.Errorf("unknown workflow: %v", wf.wf)
 	}
 
 	return p, nil
@@ -174,7 +184,7 @@ func (wf *workflowEvent) process(acr *argoCabooseRunner) {
 }
 
 type argoCabooseRunner struct {
-	configFile  string
+	swoopConfig *config.SwoopConfig
 	ctx         context.Context
 	db          *pgxpool.Pool
 	wfClientSet wfclientset.Interface
@@ -240,6 +250,8 @@ func (acr *argoCabooseRunner) wfStart(wf *workflowEvent) {
 
 // TODO: how to handle retries?
 func (acr *argoCabooseRunner) wfDone(wf *workflowEvent) {
+	fmt.Println("swoopconfig")
+	fmt.Println(acr.swoopConfig)
 	parsed, err := wf.extractProps()
 	if err != nil {
 		log.Printf("%s", err)
@@ -298,7 +310,7 @@ func (acr *argoCabooseRunner) deleteWorkflow(wf *workflowEvent) error {
 }
 
 type ArgoCaboose struct {
-	ConfigFile     string
+	SwoopConfig    *config.SwoopConfig
 	K8sConfigFlags *genericclioptions.ConfigFlags
 }
 
@@ -306,13 +318,13 @@ func (c *ArgoCaboose) newArgoCabooseRunner(ctx context.Context) (*argoCabooseRun
 	// db connection
 	db, err := db.Connect(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("Failed to connect to database: %s", err)
+		return nil, fmt.Errorf("failed to connect to database: %s", err)
 	}
 
 	// kube client
 	restConfig, err := c.K8sConfigFlags.ToRESTConfig()
 	if err != nil {
-		return nil, fmt.Errorf("Failed to get kubernetes config: %s", err)
+		return nil, fmt.Errorf("failed to get kubernetes config: %s", err)
 	}
 
 	wfClientSet := wfclientset.NewForConfigOrDie(restConfig)
@@ -322,7 +334,7 @@ func (c *ArgoCaboose) newArgoCabooseRunner(ctx context.Context) (*argoCabooseRun
 	var wg sync.WaitGroup
 
 	return &argoCabooseRunner{
-		configFile:  c.ConfigFile,
+		swoopConfig: c.SwoopConfig,
 		ctx:         ctx,
 		db:          db,
 		wfClientSet: wfClientSet,
@@ -369,7 +381,7 @@ func (c *ArgoCaboose) Run(ctx context.Context, cancel context.CancelFunc) error 
 		ctx.Done(),
 		wfInformer.HasSynced,
 	) {
-		return fmt.Errorf("Timed out waiting for cache to sync")
+		return fmt.Errorf("timed out waiting for cache to sync")
 	}
 
 	// TODO: what happens if a worker hangs? Workers should timeout?

@@ -1,12 +1,12 @@
 handlers:
   argoHandler:
     type: argoWorkflowHandler
-    #server-url: https://kubernetes:6443
+    #serverUrl: https://kubernetes:6443
     #token: {secrets.argo_token}
 
   cirrusHandler:
     type: cirrusWorkflowHandler
-    #sqs-url: https://sqs.aws.com/0142354653636::sqs::queue
+    #sqsUrl: https://sqs.aws.com/0142354653636::sqs::queue
 
   # We believe it is best to re-template the request
   # (at least with regard to secrets) JIT for every request execution
@@ -18,7 +18,7 @@ handlers:
     requestBody: |
       {
         "fixed": "a_value",
-        "name": "{{ .parameters.workflow_name -}}",
+        "name": "{{ .parameters.workflowName -}}",
         "date": "{{ .parameters.feature.properties.datetime -}}"
       }
     operation: POST
@@ -35,10 +35,9 @@ handlers:
         path: /secrets-mount/username-secret
         ttl: 1200
     headers:
-      - name: Authorization
-        value: "Basic {{ .secrets.user }} {{ .secrets.password}}"
-      - Content-Type: application/json
-      - X-Workflow-Name: "{{ .parameters.workflow_name }}"
+      Authorization: "Basic {{ .secrets.user }} {{ .secrets.password}}"
+      Content-Type: "application/json"
+      X-Workflow-Name: "{{ .parameters.workflowName }}"
     backoff:
       retries: 10
       seconds: 5
@@ -56,11 +55,11 @@ handlers:
     # conductor will have the callback action_uuid so will be able to load the parameters.json
     # from object storage and use that for templating at request time
     parameters:
-      - name: workflow_name
+      workflowName:
         # types?
         # how do we distinguish between default being set to null and it not being set at all?
         default: a_value # setting a default makes a parameter not required
-      - name: feature
+      feature:
 
 conductors:
   instance-a:
@@ -69,27 +68,28 @@ conductors:
       - publishS3Handler
 
 callbacks:
-  publishS3Push: &callbacks-publishS3Push
+  publishS3Push: &callbacksPublishS3Push
     handler: publishS3Handler
     # per_feature creates a callback action for each feature in the output
     type: perFeature
     on:
-      - always
-      - never
-      - not "success"
+      - "success"
       - "failed"
       - "aborted"
       - "timed_out"
-    feature_filter: <jsonpath like workflow chaining filter>
+    notOn:
+      - "success"
+    featureFilter: "@.id =~ 'fake*' & @.properties.gsd <= 0"
     parameters:
-      - name: workflow_name
+      workflowName:
         # TODO: need to add the workflow ID as a label on the workflow resource
         # this property name is invalid
         # Note these are _not_ templates, these are "select a value out of json"
         # see kubectl --sort-by=
         value: "{{ .workflow.resource.name -}}"
-      - name: feature
+      feature:
         value: "{{ .feature }}"
+    enabled: true
 
 workflows:
   mirror:
@@ -102,18 +102,19 @@ workflows:
       - .features[].collection
     cacheKeyHashExcludes: []
     callbacks:
-      publish_s3_push: << *callbacks-publishS3Push
+      publishS3Push:
+        <<: *callbacksPublishS3Push
       bulkUpdate:
         handler: bulkUpdateHandler
         # single creates a single callback action
         type: single
-        when: ${workflow.status} == "success"
         # We could provide a filter, but if we want all items we can omit it
-        # feature_filter: <jsonpath like workflow chaining filter>
+        # featureFilter: "@.id =~ 'fake*' & @.properties.gsd <= 0"
         enabled: false
   cirrus-example:
     callbacks:
-      publish_s3_push: << *callbacks-publishS3Push
+      publishS3Push:
+        <<: *callbacksPublishS3Push
     title: "Cirrus example workflow"
     description: "An example workflow config for a cirrus workflow"
     version: 1

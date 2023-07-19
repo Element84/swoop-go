@@ -3,11 +3,12 @@ package cmd
 import (
 	"log"
 
+	"github.com/element84/swoop-go/pkg/caboose"
+
+	"github.com/element84/swoop-go/pkg/cmdutil"
+	"github.com/element84/swoop-go/pkg/config"
 	"github.com/spf13/cobra"
 	"k8s.io/cli-runtime/pkg/genericclioptions"
-
-	"github.com/element84/swoop-go/pkg/caboose"
-	"github.com/element84/swoop-go/pkg/cmdutil"
 	"github.com/element84/swoop-go/pkg/s3"
 )
 
@@ -17,7 +18,7 @@ func init() {
 
 func mkCabooseCmd() *cobra.Command {
 	var (
-		config string
+		configFile string
 	)
 
 	cmd := &cobra.Command{
@@ -27,7 +28,7 @@ func mkCabooseCmd() *cobra.Command {
 	s3Config := &s3.S3Driver{}
 	s3Config.AddFlags(cmd.PersistentFlags())
 	cmd.PersistentFlags().StringVarP(
-		&config, "config-file", "f", "", "swoop-caboose config file path (required; SWOOP_CONFIG_FILE)",
+		&configFile, "config-file", "f", "", "swoop-caboose config file path (required; SWOOP_CONFIG_FILE)",
 	)
 	cmd.MarkPersistentFlagRequired("config-file")
 
@@ -37,8 +38,13 @@ func mkCabooseCmd() *cobra.Command {
 			Use:   "argo",
 			Short: "Run the caboose service for argo workflow integrations",
 			Run: func(cmd *cobra.Command, args []string) {
-				err := cmdutil.Run(&caboose.ArgoCaboose{
-					ConfigFile:     config,
+				sc, err := config.Parse(configFile)
+				if err != nil {
+					log.Fatalf("Error parsing config: %s", err)
+
+				}
+				err = cmdutil.Run(&caboose.ArgoCaboose{
+					SwoopConfig:    sc,
 					K8sConfigFlags: configFlags,
 				})
 				if err != nil {
