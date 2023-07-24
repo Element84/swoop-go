@@ -7,9 +7,9 @@ import (
 
 	"github.com/element84/swoop-go/pkg/cmdutil"
 	"github.com/element84/swoop-go/pkg/config"
+	"github.com/element84/swoop-go/pkg/s3"
 	"github.com/spf13/cobra"
 	"k8s.io/cli-runtime/pkg/genericclioptions"
-	"github.com/element84/swoop-go/pkg/s3"
 )
 
 func init() {
@@ -25,8 +25,8 @@ func mkCabooseCmd() *cobra.Command {
 		Use:   "caboose",
 		Short: "swoop-caboose commands for state updates",
 	}
-	s3Config := &s3.S3Driver{}
-	s3Config.AddFlags(cmd.PersistentFlags())
+	s3Driver := &s3.S3Driver{}
+	s3Driver.AddFlags(cmd.PersistentFlags())
 	cmd.PersistentFlags().StringVarP(
 		&configFile, "config-file", "f", "", "swoop-caboose config file path (required; SWOOP_CONFIG_FILE)",
 	)
@@ -44,6 +44,7 @@ func mkCabooseCmd() *cobra.Command {
 
 				}
 				err = cmdutil.Run(&caboose.ArgoCaboose{
+					S3Driver:       s3Driver,
 					SwoopConfig:    sc,
 					K8sConfigFlags: configFlags,
 				})

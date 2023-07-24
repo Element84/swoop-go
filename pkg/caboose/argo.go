@@ -1,7 +1,9 @@
 package caboose
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"log"
 	"os"
@@ -29,6 +31,7 @@ import (
 
 	"github.com/element84/swoop-go/pkg/config"
 	"github.com/element84/swoop-go/pkg/db"
+	"github.com/element84/swoop-go/pkg/s3"
 	"github.com/element84/swoop-go/pkg/utils"
 )
 
@@ -184,6 +187,7 @@ func (wf *workflowEvent) process(acr *argoCabooseRunner) {
 }
 
 type argoCabooseRunner struct {
+	s3Driver    *s3.S3Driver
 	swoopConfig *config.SwoopConfig
 	ctx         context.Context
 	db          *pgxpool.Pool
@@ -269,6 +273,22 @@ func (acr *argoCabooseRunner) wfDone(wf *workflowEvent) {
 		log.Printf("%s", err)
 		return
 	}
+
+	b := new(bytes.Buffer)
+	json.NewEncoder(b).Encode(wf.wf)
+	err = acr.s3Driver.Put(
+		acr.ctx,
+		fmt.Sprintf(
+			"executions/%s/workflow.json",
+			parsed.workflowUUID,
+		),
+		b,
+		int64(b.Len()),
+	)
+	if err != nil {
+		log.Printf("%s", err)
+		return
+	}
 	log.Printf("Inserted end event for workflow: '%s'", parsed.workflowUUID)
 
 	// TODO: do we have a possible race here? If we delete the workflow before
@@ -310,6 +330,7 @@ func (acr *argoCabooseRunner) deleteWorkflow(wf *workflowEvent) error {
 }
 
 type ArgoCaboose struct {
+	S3Driver       *s3.S3Driver
 	SwoopConfig    *config.SwoopConfig
 	K8sConfigFlags *genericclioptions.ConfigFlags
 }
@@ -334,6 +355,7 @@ func (c *ArgoCaboose) newArgoCabooseRunner(ctx context.Context) (*argoCabooseRun
 	var wg sync.WaitGroup
 
 	return &argoCabooseRunner{
+		s3Driver:    c.S3Driver,
 		swoopConfig: c.SwoopConfig,
 		ctx:         ctx,
 		db:          db,
