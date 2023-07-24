@@ -1,111 +1,177 @@
 package s3
 
 import (
+	"context"
 	"fmt"
+	"io"
+	"net/url"
+	"os"
 
-	// "github.com/argoproj/pkg/file"
-	// s3client "github.com/argoproj/pkg/s3"
-
+	"github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go/aws/credentials/stscreds"
+	"github.com/aws/aws-sdk-go/aws/session"
+	"github.com/minio/minio-go/v7"
+	"github.com/minio/minio-go/v7/pkg/credentials"
+	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 )
 
 // S3Driver is a driver for Object Storage (MinIO, S3, etc)
 type S3Driver struct {
-	Endpoint              string
-	Region                string
-	Secure                bool
-	AccessKey             string
-	SecretKey             string
-	RoleARN               string
-	UseSDKCreds           bool
-	KmsKeyId              string
-	KmsEncryptionContext  string
-	EnableEncryption      bool
-	ServerSideCustomerKey string
+	Bucket   string
+	Endpoint string
+	Region   string
+	Session  *session.Session
 }
 
 func (s3 *S3Driver) AddFlags(fs *pflag.FlagSet) {
+	fs.StringVar(
+		&s3.Bucket,
+		"s3-bucket",
+		"",
+		"swoop s3 bucket name (required; SWOOP_S3_BUCKET)",
+	)
+	cobra.MarkFlagRequired(fs, "s3-bucket")
 	fs.StringVar(
 		&s3.Endpoint,
 		"s3-endpoint",
 		"",
 		"swoop s3 endpoint (required; SWOOP_S3_ENDPOINT)",
 	)
-	fs.StringVar(
-		&s3.Region,
-		"s3-region",
-		"",
-		"swoop s3 region (SWOOP_S3_REGION)",
-	)
-	fs.BoolVar(
-		&s3.Secure,
-		"s3-secure",
-		false,
-		"swoop s3 secure (SWOOP_S3_SECURE)",
-	)
-	fs.StringVar(
-		&s3.AccessKey,
-		"s3-access-key",
-		"",
-		"swoop s3 access key (required; SWOOP_S3_ACCESS_KEY)",
-	)
-	fs.StringVar(
-		&s3.SecretKey,
-		"s3-secret-key",
-		"",
-		"swoop s3 secret key (required; SWOOP_S3_SECRET_KEY)",
-	)
-	fs.StringVar(
-		&s3.RoleARN,
-		"s3-role-arn",
-		"",
-		"swoop s3 role arn (SWOOP_S3_ROLE_ARN)",
-	)
-	fs.BoolVar(
-		&s3.UseSDKCreds,
-		"s3-use-sdk-creds",
-		false,
-		"swoop s3 use SDK creds (SWOOP_USE_SDK_CREDS)",
-	)
-	fs.StringVar(
-		&s3.KmsKeyId,
-		"s3-kms-key-id",
-		"",
-		"swoop s3 kms key id (SWOOP_S3_KMS_KEY_ID)",
-	)
-	fs.StringVar(
-		&s3.KmsEncryptionContext,
-		"s3-kms-encryption-context",
-		"",
-		"swoop s3 kms encryption context (SWOOP_S3_KMS_ENCRYPTION_CONTEXT)",
-	)
-	fs.BoolVar(
-		&s3.EnableEncryption,
-		"s3-enable-encryption",
-		false,
-		"swoop s3 use SDK creds (SWOOP_S3_ENABLE_ENCRYPTION)",
-	)
-	fs.StringVar(
-		&s3.ServerSideCustomerKey,
-		"s3-server-side-customer-key",
-		"",
-		"swoop s3 server side customer key (required; SWOOP_S3_SERVER_SIDE_CUSTOMER_KEY)",
-	)
 }
 
-// For debugging purposes
-func (s3 *S3Driver) S3ClientFlags() string {
-	return fmt.Sprintf(
-		s3.Endpoint,
-		s3.Region,
-		s3.Secure,
-		s3.AccessKey,
-		s3.SecretKey,
-		s3.RoleARN,
-		s3.UseSDKCreds,
-		s3.KmsKeyId,
-		s3.KmsEncryptionContext,
-		s3.EnableEncryption,
-		s3.ServerSideCustomerKey,
+func (d *S3Driver) AWSCreds() (*credentials.Credentials, error) {
+	// see https://pkg.go.dev/github.com/aws/aws-sdk-go/aws/session
+	// for details on how this gets creds and the supported env vars
+	if d.Session == nil {
+		d.Session = session.Must(session.NewSessionWithOptions(session.Options{
+			AssumeRoleTokenProvider: stscreds.StdinTokenProvider,
+			Config: aws.Config{
+				Region: aws.String(d.Region),
+			},
+		}))
+	}
+
+	if d.Region == "" {
+		d.Region = *d.Session.Config.Region
+	}
+
+	creds, err := d.Session.Config.Credentials.Get()
+	if err != nil {
+		return nil, err
+	}
+
+	return credentials.NewStaticV4(
+		creds.AccessKeyID,
+		creds.SecretAccessKey,
+		creds.SessionToken,
+	), nil
+}
+
+func (d *S3Driver) GetCredentials() (*credentials.Credentials, error) {
+	// let's try minio env vars for creds first
+	id := os.Getenv("MINIO_ROOT_USER")
+	secret := os.Getenv("MINIO_ROOT_PASSWORD")
+	token := ""
+
+	if id == "" || secret == "" {
+		id = os.Getenv("MINIO_ACCESS_KEY")
+		secret = os.Getenv("MINIO_SECRET_KEY")
+	}
+
+	// if we end up with something then great, let's use it
+	if id != "" || secret != "" {
+		return credentials.NewStaticV4(id, secret, token), nil
+	}
+
+	// if that didn't work then try the AWS SDK
+	return d.AWSCreds()
+}
+
+func (d *S3Driver) newS3Client(ctx context.Context) (*s3client, error) {
+	var (
+		minioClient *minio.Client
+		err         error
 	)
+
+	secure := true
+	endpoint := "s3.amazonaws.com"
+
+	if d.Endpoint != "" {
+		endpointURL, err := url.Parse(d.Endpoint)
+		if err != nil {
+			return nil, err
+		}
+
+		// minio wants to add the scheme itself and uses the `secure` flag
+		// to determine http vs https, so we drop the scheme off our endpoint
+		secure = endpointURL.Scheme == "https"
+		endpointURL.Scheme = ""
+		// we slice off the first two chars from the endpoint string
+		// because .String() includes `//` even with an empty Scheme
+		endpoint = endpointURL.String()[2:]
+	}
+
+	credentials, err := d.GetCredentials()
+	if err != nil {
+		return nil, err
+	}
+
+	bucketLookupType := minio.BucketLookupAuto
+	minioOpts := &minio.Options{
+		Creds:        credentials,
+		Secure:       secure,
+		Region:       d.Region,
+		BucketLookup: bucketLookupType,
+	}
+	minioClient, err = minio.New(endpoint, minioOpts)
+	if err != nil {
+		return nil, err
+	}
+
+	return &s3client{
+		S3Driver:    *d,
+		minioClient: minioClient,
+		context:     ctx,
+	}, nil
+}
+
+// TODO: check valid config function to use at init
+
+func (d *S3Driver) Get(ctx context.Context, key string) (*minio.Object, error) {
+	// TODO: retry transient errors? Or rely on higher-level retry maybe?
+	s3, err := d.newS3Client(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create new S3 client: %v", err)
+	}
+
+	return s3.GetStream(key)
+}
+
+func (d *S3Driver) Put(ctx context.Context, key string, stream io.Reader, length int64) error {
+	// TODO: retry transient errors? Or rely on higher-level retry maybe?
+	s3, err := d.newS3Client(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to create new S3 client: %v", err)
+	}
+
+	return s3.PutStream(key, stream, length)
+}
+
+func (d *S3Driver) makeBucket(ctx context.Context) error {
+	s3, err := d.newS3Client(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to create new S3 client: %v", err)
+	}
+
+	return s3.MakeBucket()
+}
+
+func (d *S3Driver) removeBucket(ctx context.Context) error {
+	s3, err := d.newS3Client(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to create new S3 client: %v", err)
+	}
+
+	return s3.removeBucket()
 }
