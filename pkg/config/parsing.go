@@ -87,54 +87,71 @@ func loadYaml(inputFile string, conf *SwoopConfig) error {
 }
 
 func ValidateConfig(sc *SwoopConfig) error {
-
-	for wf_name, wf := range sc.Workflows {
-		for cb_name, cb := range wf.Callbacks {
+	for wfName, wf := range sc.Workflows {
+		for cbName, cb := range wf.Callbacks {
+			var (
+				callbackParamNames []string
+				handlerParamNames  []string
+				requiredParamNames []string
+			)
 
 			// Check for conflicts in on/not on conditions
-
 			on := cb.On
 			notOn := cb.NotOn
 			for _, v := range on {
 				if utils.Contains(notOn, v) {
-					err := fmt.Errorf("the workflow status value '%v' for callback '%s' in workflow '%s' is conflicting and appears in both the on/ notOn clauses in the config", v, cb_name, wf_name)
-					fmt.Println(err)
+					return fmt.Errorf(
+						"the workflow status value '%v' for callback '%s' in workflow '%s' is conflicting and appears in both the on/ notOn clauses in the config",
+						v,
+						cbName,
+						wfName,
+					)
 				}
 			}
 
-			callback_params := cb.Parameters
-			handler_name := cb.Handler
-			handler_params := sc.Handlers[handler_name].Parameters
-			var callback_param_names []string
-			var handler_param_names []string
+			callbackParams := cb.Parameters
+			handlerName := cb.Handler
 
-			for hand_name, hand_param := range handler_params {
-				if hand_param.IsRequired() {
-					handler_param_names = append(handler_param_names, hand_name)
+			for name, param := range sc.Handlers[handlerName].Parameters {
+				handlerParamNames = append(handlerParamNames, name)
+				if param.IsRequired() {
+					requiredParamNames = append(requiredParamNames, name)
 				}
 			}
 
-			for cb_name := range callback_params {
-				callback_param_names = append(callback_param_names, cb_name)
+			for name := range callbackParams {
+				callbackParamNames = append(callbackParamNames, name)
 			}
 
 			// Check if all required handler parameters are defined in callback
-			for _, v := range handler_param_names {
-				if !utils.Contains(callback_param_names, v) {
-					return fmt.Errorf("required handler parameter '%s' is not provided as a callback parameter for callback '%s' in workflow '%s' ", v, cb_name, wf_name)
+			for _, v := range requiredParamNames {
+				if !utils.Contains(callbackParamNames, v) {
+					return fmt.Errorf(
+						"handler '%s' required parameter '%s' is not defined on callback '%s' in workflow '%s' ",
+						handlerName,
+						v,
+						cbName,
+						wfName,
+					)
 				}
 			}
 
-			// Check if no additional callback parameters are defined that are not also required handler parameters
-			if len(callback_param_names) != len(handler_param_names) {
-				return fmt.Errorf("the number of callback parameters (%d) is not equal to the number of required handler parameters (%d) for callback %s in workflow '%s'", len(callback_param_names), len(handler_param_names), cb_name, wf_name)
+			// Check all callback parameters are handler parameters
+			for _, v := range callbackParamNames {
+				if !utils.Contains(handlerParamNames, v) {
+					return fmt.Errorf(
+						"callback '%s' parameter '%s' is not a known parameter for handler '%s' in workflow '%s' ",
+						cbName,
+						v,
+						handlerName,
+						wfName,
+					)
+				}
 			}
-
 		}
 	}
 
 	return nil
-
 }
 
 func (p *HandlerParameter) IsRequired() bool {
@@ -142,27 +159,37 @@ func (p *HandlerParameter) IsRequired() bool {
 }
 
 func (p *HandlerParameter) UnmarshalYAML(unmarshal func(interface{}) error) error {
-	var iface map[string]interface{}
-	var ok bool
+	var (
+		iface map[string]interface{}
+		ok    bool
+	)
+
 	err := unmarshal(&iface)
-	fmt.Println(err)
+	if err != nil {
+		return err
+	}
+
 	p.isDefaultSet = false
 	p.Default, ok = iface["default"]
 	if ok {
 		p.isDefaultSet = true
 	}
+
 	return nil
 }
 
 func Parse(configFile string) (*SwoopConfig, error) {
 	conf := &SwoopConfig{}
+
 	err := loadYaml(configFile, conf)
 	if err != nil {
 		return nil, err
 	}
+
 	err = ValidateConfig(conf)
 	if err != nil {
 		return nil, err
 	}
+
 	return conf, nil
 }
