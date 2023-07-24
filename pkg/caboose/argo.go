@@ -36,10 +36,24 @@ import (
 )
 
 const (
+	// TODO: make these config parameters
 	workflowResyncPeriod = 20 * time.Minute
-	// TODO: make this a config parameter
-	maxWorkers = 4
+	maxWorkers           = 4
+	minBackoff           = 2 * time.Second
+	maxBackoff           = 300 * time.Second
+	instanceId           = ""
 )
+
+func IntPow(n, m int) int {
+	if m == 0 {
+		return 1
+	}
+	result := n
+	for i := 2; i <= m; i++ {
+		result *= n
+	}
+	return result
+}
 
 type dbEvent struct {
 	actionUUID uuid.UUID
@@ -102,6 +116,34 @@ type workflowProperties struct {
 	errorMsg     string
 }
 
+func newWorkflowProperties(raw interface{}) (*workflowProperties, error) {
+	un, ok := raw.(*unstructured.Unstructured)
+	if !ok {
+		return nil, fmt.Errorf("failed to parse workflow: %v", raw)
+	}
+
+	labels := un.GetLabels()
+	status, _, _ := unstructured.NestedMap(un.Object, "status")
+	start, _, _ := unstructured.NestedString(status, "startedAt")
+	finish, _, _ := unstructured.NestedString(status, "finishedAt")
+
+	p := &workflowProperties{
+		workflowUUID: uuid.FromStringOrNil(un.GetName()),
+		templateName: labels[common.LabelKeyWorkflowTemplate],
+	}
+
+	p.statusFromPhase(labels[common.LabelKeyPhase])
+	p.startedAt, _ = time.Parse(time.RFC3339, start)
+	p.finishedAt, _ = time.Parse(time.RFC3339, finish)
+	p.errorMsg, _, _ = unstructured.NestedString(status, "message")
+
+	if p.workflowUUID.IsNil() || p.templateName == "" {
+		return nil, fmt.Errorf("unknown workflow: %v", raw)
+	}
+
+	return p, nil
+}
+
 func (p *workflowProperties) statusFromPhase(phase string) {
 	if phase == "Succeeded" {
 		p.status = "SUCCESSFUL"
@@ -145,45 +187,23 @@ const (
 )
 
 type workflowEvent struct {
-	eventType wfEventType
-	wf        interface{}
+	eventType  wfEventType
+	wf         interface{}
+	retries    int
+	properties *workflowProperties
 }
 
-func (wf *workflowEvent) extractProps() (*workflowProperties, error) {
-	un, ok := wf.wf.(*unstructured.Unstructured)
-	if !ok {
-		return nil, fmt.Errorf("failed to parse workflow: %v", wf.wf)
+func newWorkflowEvent(eventType wfEventType, raw interface{}) (*workflowEvent, error) {
+	properties, err := newWorkflowProperties(raw)
+	if err != nil {
+		return nil, err
 	}
 
-	labels := un.GetLabels()
-	status, _, _ := unstructured.NestedMap(un.Object, "status")
-	start, _, _ := unstructured.NestedString(status, "startedAt")
-	finish, _, _ := unstructured.NestedString(status, "finishedAt")
-
-	p := &workflowProperties{
-		workflowUUID: uuid.FromStringOrNil(un.GetName()),
-		templateName: labels[common.LabelKeyWorkflowTemplate],
-	}
-
-	p.statusFromPhase(labels[common.LabelKeyPhase])
-	p.startedAt, _ = time.Parse(time.RFC3339, start)
-	p.finishedAt, _ = time.Parse(time.RFC3339, finish)
-	p.errorMsg, _, _ = unstructured.NestedString(status, "message")
-
-	if p.workflowUUID.IsNil() || p.templateName == "" {
-		return nil, fmt.Errorf("unknown workflow: %v", wf.wf)
-	}
-
-	return p, nil
-}
-
-func (wf *workflowEvent) process(acr *argoCabooseRunner) {
-	switch wf.eventType {
-	case started:
-		acr.wfStart(wf)
-	case completed:
-		acr.wfDone(wf)
-	}
+	return &workflowEvent{
+		eventType:  eventType,
+		wf:         raw,
+		properties: properties,
+	}, nil
 }
 
 type argoCabooseRunner struct {
@@ -194,12 +214,13 @@ type argoCabooseRunner struct {
 	wfClientSet wfclientset.Interface
 	dynIface    *dynamic.DynamicClient
 	wg          *sync.WaitGroup
-	wfChan      chan workflowEvent
+	wfChan      chan *workflowEvent
 }
 
-// TODO: look at errgroup to propagate errors back up
+// TODO: how to restart failed workers?
 //
-//	(https://pkg.go.dev/golang.org/x/sync/errgroup)
+//	Panic handler?
+//	wait.Until?
 func (acr *argoCabooseRunner) worker(id int) {
 	log.Printf("starting worker %d", id)
 	acr.wg.Add(1)
@@ -220,9 +241,7 @@ func (acr *argoCabooseRunner) worker(id int) {
 
 		select {
 		case wf := <-acr.wfChan:
-			// TODO: what if the workflow isn't a
-			// swoop one or is otherwise invalid?
-			wf.process(acr)
+			acr.process(wf)
 		case <-acr.ctx.Done():
 			end()
 			return
@@ -237,42 +256,75 @@ func (acr *argoCabooseRunner) StartWorkers() {
 	}
 }
 
-// TODO: how to handle retries?
-func (acr *argoCabooseRunner) wfStart(wf *workflowEvent) {
-	parsed, err := wf.extractProps()
-	if err != nil {
-		log.Printf("%s", err)
-		return
+func (acr *argoCabooseRunner) process(wf *workflowEvent) {
+	switch wf.eventType {
+	case started:
+		acr.wfStart(wf)
+	case completed:
+		err := acr.wfDone(wf)
+		if err != nil {
+			log.Printf(
+				"error encountered processing '%s': %s",
+				wf.properties.workflowUUID,
+				err,
+			)
+			go acr.backoff(wf)
+		}
 	}
-
-	_, err = parsed.toStartEvent().insert(acr.ctx, acr.db)
-	if err != nil {
-		log.Printf("%s", err)
-	}
-	log.Printf("Inserted start event for workflow: '%s'", parsed.workflowUUID)
 }
 
-// TODO: how to handle retries?
-func (acr *argoCabooseRunner) wfDone(wf *workflowEvent) {
-	fmt.Println("swoopconfig")
-	fmt.Println(acr.swoopConfig)
-	parsed, err := wf.extractProps()
-	if err != nil {
-		log.Printf("%s", err)
-		return
+func (acr *argoCabooseRunner) backoff(wf *workflowEvent) {
+	backoffSecs := time.Duration(IntPow(2, wf.retries)) * minBackoff
+	if backoffSecs > maxBackoff {
+		backoffSecs = maxBackoff
 	}
-	_, err = parsed.toStartEvent().insert(acr.ctx, acr.db)
-	if err != nil {
-		log.Printf("%s", err)
-		return
-	}
-	log.Printf("Inserted start event for workflow: '%s'", parsed.workflowUUID)
 
-	_, err = parsed.toEndEvent().insert(acr.ctx, acr.db)
-	if err != nil {
-		log.Printf("%s", err)
+	select {
+	case <-acr.ctx.Done():
 		return
+	case <-time.After(backoffSecs):
 	}
+
+	wf.retries++
+	acr.wfChan <- wf
+}
+
+func (acr *argoCabooseRunner) wfStart(wf *workflowEvent) error {
+	_, err := wf.properties.toStartEvent().insert(acr.ctx, acr.db)
+	if err != nil {
+		return err
+	}
+	log.Printf(
+		"Inserted start event for workflow: '%s'",
+		wf.properties.workflowUUID,
+	)
+	return nil
+}
+
+func (acr *argoCabooseRunner) wfDone(wf *workflowEvent) error {
+	tx, err := acr.db.Begin(acr.ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(acr.ctx)
+
+	_, err = wf.properties.toStartEvent().insert(acr.ctx, acr.db)
+	if err != nil {
+		return err
+	}
+	log.Printf(
+		"Inserted start event for workflow: '%s'",
+		wf.properties.workflowUUID,
+	)
+
+	_, err = wf.properties.toEndEvent().insert(acr.ctx, acr.db)
+	if err != nil {
+		return err
+	}
+	log.Printf(
+		"Inserted end event for workflow: '%s'",
+		wf.properties.workflowUUID,
+	)
 
 	b := new(bytes.Buffer)
 	json.NewEncoder(b).Encode(wf.wf)
@@ -280,25 +332,35 @@ func (acr *argoCabooseRunner) wfDone(wf *workflowEvent) {
 		acr.ctx,
 		fmt.Sprintf(
 			"executions/%s/workflow.json",
-			parsed.workflowUUID,
+			wf.properties.workflowUUID,
 		),
 		b,
 		int64(b.Len()),
 	)
 	if err != nil {
-		log.Printf("%s", err)
-		return
+		return err
 	}
-	log.Printf("Inserted end event for workflow: '%s'", parsed.workflowUUID)
 
 	// TODO: do we have a possible race here? If we delete the workflow before
 	// argo has finished with cleanup or other post-workflow tasks, will it
 	// lose the state it needs to finish them? How can we know the workflow is
 	// good to clean up?
+	//
+	// Maybe we apply a label, and use another listener to delete workflows
+	// with said label (and perhaps another argo one)?
+	//
+	// Looks like argo is looking for `common.IsDone(un)`
 	err = acr.deleteWorkflow(wf)
 	if err != nil {
-		log.Printf("%s", err)
+		return err
 	}
+
+	err = tx.Commit(acr.ctx)
+	if err != nil {
+		return err
+	}
+
+	return nil
 }
 
 func (acr *argoCabooseRunner) deleteWorkflow(wf *workflowEvent) error {
@@ -351,7 +413,7 @@ func (c *ArgoCaboose) newArgoCabooseRunner(ctx context.Context) (*argoCabooseRun
 	wfClientSet := wfclientset.NewForConfigOrDie(restConfig)
 	dynamicInterface := dynamic.NewForConfigOrDie(restConfig)
 
-	wfChan := make(chan workflowEvent)
+	wfChan := make(chan *workflowEvent)
 	var wg sync.WaitGroup
 
 	return &argoCabooseRunner{
@@ -386,8 +448,7 @@ func (c *ArgoCaboose) Run(ctx context.Context, cancel context.CancelFunc) error 
 		workflowResyncPeriod,
 		func(options *metav1.ListOptions) {
 			labelSelector := labels.NewSelector().
-				// TODO: make instanceID config parameter
-				Add(util.InstanceIDRequirement("")) // instanceID
+				Add(util.InstanceIDRequirement(instanceId))
 			options.LabelSelector = labelSelector.String()
 		},
 		cache.Indexers{
@@ -438,20 +499,28 @@ func (c *ArgoCaboose) SignalHandler(
 
 func addWorkflowInformerHandlers(
 	wfInformer cache.SharedIndexInformer,
-	wfChan chan<- workflowEvent,
+	wfChan chan<- *workflowEvent,
 ) {
+	handle := func(eventType wfEventType) func(interface{}) {
+		return func(obj interface{}) {
+			wf, err := newWorkflowEvent(eventType, obj)
+			if err != nil {
+				log.Println(err)
+				return
+			}
+			wfChan <- wf
+		}
+	}
+
 	// workflow start handler
 	wfInformer.AddEventHandler(
 		cache.FilteringResourceEventHandler{
 			FilterFunc: func(obj interface{}) bool {
 				un, ok := obj.(*unstructured.Unstructured)
 				return ok && un.GetLabels()[common.LabelKeyPhase] == "Running"
-				// TODO: use the extract function methods to filter based on valid wf or not
 			},
 			Handler: cache.ResourceEventHandlerFuncs{
-				AddFunc: func(obj interface{}) {
-					wfChan <- workflowEvent{started, obj}
-				},
+				AddFunc: handle(started),
 			},
 		},
 	)
@@ -463,9 +532,7 @@ func addWorkflowInformerHandlers(
 				return ok && un.GetLabels()[common.LabelKeyCompleted] == "true"
 			},
 			Handler: cache.ResourceEventHandlerFuncs{
-				AddFunc: func(obj interface{}) {
-					wfChan <- workflowEvent{completed, obj}
-				},
+				AddFunc: handle(completed),
 			},
 		},
 	)
