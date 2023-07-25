@@ -26,7 +26,6 @@ import (
 	"github.com/argoproj/argo-workflows/v3/workflow/controller/indexes"
 	"github.com/argoproj/argo-workflows/v3/workflow/util"
 	"github.com/gofrs/uuid/v5"
-	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/element84/swoop-go/pkg/config"
@@ -53,58 +52,6 @@ func IntPow(n, m int) int {
 		result *= n
 	}
 	return result
-}
-
-type dbEvent struct {
-	actionUUID uuid.UUID
-	eventTime  time.Time
-	status     string
-	errorMsg   string
-}
-
-func (s *dbEvent) insert(ctx context.Context, db *pgxpool.Pool) (pgconn.CommandTag, error) {
-	/*
-		// We could do something like this if we wanted to prevent events being inserted for
-		// unknown workflows. In reality, however, the current risk of not checking seems low.
-		// If we did want this check, then it might make more sense as a trigger on event insert,
-		// or perhaps a foreign key relation to action might be better (but runs into complications
-		// with partitioning). For now we'll keep this here as a reference, in case we want it.
-		var actionExists bool
-		err := db.QueryRow(
-			ctx,
-			"SELECT exists(SELECT 1 from swoop.action where action_uuid = $1)",
-			s.actionUUID,
-		).Scan(&actionExists)
-
-		if err != nil {
-			// returning nil here doesn't work, we need a CommandTag
-			return nil, err
-		} else if !actionExists {
-			// returning nil here doesn't work, we need a CommandTag
-			return nil, fmt.Errorf("Cannot insert event, unknown action UUID: '%s'", s.actionUUID)
-		}
-	*/
-
-	return db.Exec(
-		ctx,
-		`INSERT INTO swoop.event (
-		    action_uuid,
-			event_time,
-			status,
-			error,
-			event_source
-		) VALUES (
-			$1,
-			$2,
-			$3,
-			$4,
-			'swoop-caboose'
-		) ON CONFLICT DO NOTHING`,
-		s.actionUUID,
-		s.eventTime,
-		s.status,
-		s.errorMsg,
-	)
 }
 
 type workflowProperties struct {
@@ -154,20 +101,20 @@ func (p *workflowProperties) statusFromPhase(phase string) {
 	}
 }
 
-func (p *workflowProperties) toStartEvent() *dbEvent {
-	return &dbEvent{
-		actionUUID: p.workflowUUID,
-		eventTime:  p.startedAt,
-		status:     "RUNNING",
+func (p *workflowProperties) toStartEvent() *db.Event {
+	return &db.Event{
+		ActionUUID: p.workflowUUID,
+		EventTime:  p.startedAt,
+		Status:     "RUNNING",
 	}
 }
 
-func (p *workflowProperties) toEndEvent() *dbEvent {
-	return &dbEvent{
-		actionUUID: p.workflowUUID,
-		eventTime:  p.finishedAt,
-		status:     p.status,
-		errorMsg:   p.errorMsg,
+func (p *workflowProperties) toEndEvent() *db.Event {
+	return &db.Event{
+		ActionUUID: p.workflowUUID,
+		EventTime:  p.finishedAt,
+		Status:     p.status,
+		ErrorMsg:   p.errorMsg,
 	}
 }
 
@@ -290,7 +237,7 @@ func (acr *argoCabooseRunner) backoff(wf *workflowEvent) {
 }
 
 func (acr *argoCabooseRunner) wfStart(wf *workflowEvent) error {
-	_, err := wf.properties.toStartEvent().insert(acr.ctx, acr.db)
+	_, err := wf.properties.toStartEvent().Insert(acr.ctx, acr.db)
 	if err != nil {
 		return err
 	}
@@ -308,7 +255,7 @@ func (acr *argoCabooseRunner) wfDone(wf *workflowEvent) error {
 	}
 	defer tx.Rollback(acr.ctx)
 
-	_, err = wf.properties.toStartEvent().insert(acr.ctx, acr.db)
+	_, err = wf.properties.toStartEvent().Insert(acr.ctx, acr.db)
 	if err != nil {
 		return err
 	}
@@ -317,7 +264,7 @@ func (acr *argoCabooseRunner) wfDone(wf *workflowEvent) error {
 		wf.properties.workflowUUID,
 	)
 
-	_, err = wf.properties.toEndEvent().insert(acr.ctx, acr.db)
+	_, err = wf.properties.toEndEvent().Insert(acr.ctx, acr.db)
 	if err != nil {
 		return err
 	}
