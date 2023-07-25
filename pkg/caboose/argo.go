@@ -398,6 +398,14 @@ type ArgoCaboose struct {
 }
 
 func (c *ArgoCaboose) newArgoCabooseRunner(ctx context.Context) (*argoCabooseRunner, error) {
+	// check connection to object storage
+	// allows us to fail fast if creds are obviously bad,
+	// but doesn't validate if we can actually write
+	err := c.S3Driver.CheckConnect(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed checking connnection to object storage: %s", err)
+	}
+
 	// db connection
 	db, err := db.Connect(ctx)
 	if err != nil {
