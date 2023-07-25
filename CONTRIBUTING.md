@@ -23,7 +23,7 @@ go build -o swoop
 
 ```shell
 # from the project root
-go test
+go test -count=1 -v ./...
 ```
 
 ### Managing dependencies
