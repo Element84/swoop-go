@@ -11,6 +11,7 @@ import (
 // using an interface here so we can eventually replace
 // the client with a mock for testing without docker
 type minioClient interface {
+	BucketExists(ctx context.Context, bucketName string) (found bool, err error)
 	MakeBucket(ctx context.Context, bucketName string, opts minio.MakeBucketOptions) error
 	RemoveBucketWithOptions(ctx context.Context, bucketName string, opts minio.RemoveBucketOptions) error
 	PutObject(ctx context.Context, bucketName, objectName string, reader io.Reader, objectSize int64, opts minio.PutObjectOptions) (info minio.UploadInfo, err error)
@@ -55,6 +56,13 @@ func (s3 *s3client) PutStream(key string, stream io.Reader, length int64) error 
 	)
 
 	return err
+}
+
+func (s3 *s3client) BucketExists() (bool, error) {
+	return s3.minioClient.BucketExists(
+		s3.context,
+		s3.Bucket,
+	)
 }
 
 func (s3 *s3client) MakeBucket() error {
