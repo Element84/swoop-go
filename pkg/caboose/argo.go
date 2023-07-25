@@ -43,17 +43,6 @@ const (
 	instanceId           = ""
 )
 
-func IntPow(n, m int) int {
-	if m == 0 {
-		return 1
-	}
-	result := n
-	for i := 2; i <= m; i++ {
-		result *= n
-	}
-	return result
-}
-
 type workflowProperties struct {
 	startedAt    time.Time
 	finishedAt   time.Time
@@ -221,7 +210,7 @@ func (acr *argoCabooseRunner) process(wf *workflowEvent) {
 }
 
 func (acr *argoCabooseRunner) backoff(wf *workflowEvent) {
-	backoffSecs := time.Duration(IntPow(2, wf.retries)) * minBackoff
+	backoffSecs := time.Duration(utils.IntPow(2, wf.retries)) * minBackoff
 	if backoffSecs > maxBackoff {
 		backoffSecs = maxBackoff
 	}
