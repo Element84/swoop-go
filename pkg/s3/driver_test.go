@@ -8,6 +8,7 @@ import (
 )
 
 func TestDriver(t *testing.T) {
+	var err error
 	ctx := context.Background()
 	bucket := "testbucket"
 	key := "some/key/to/a/file"
@@ -18,6 +19,11 @@ func TestDriver(t *testing.T) {
 		Endpoint: os.Getenv("SWOOP_S3_ENDPOINT"),
 	}
 
+	err = driver.CheckConnect(ctx)
+	if err != nil {
+		t.Fatalf("failed when checking connection: %s", err)
+	}
+
 	defer func() {
 		err := driver.removeBucket(ctx)
 		if err != nil {
@@ -25,7 +31,7 @@ func TestDriver(t *testing.T) {
 		}
 	}()
 
-	err := driver.makeBucket(ctx)
+	err = driver.makeBucket(ctx)
 	if err != nil {
 		t.Fatalf("failed to make bucket: %s", err)
 	}

@@ -136,7 +136,15 @@ func (d *S3Driver) newS3Client(ctx context.Context) (*s3client, error) {
 	}, nil
 }
 
-// TODO: check valid config function to use at init
+func (d *S3Driver) CheckConnect(ctx context.Context) error {
+	s3, err := d.newS3Client(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to create new S3 client: %v", err)
+	}
+
+	_, err = s3.BucketExists()
+	return err
+}
 
 func (d *S3Driver) Get(ctx context.Context, key string) (*minio.Object, error) {
 	// TODO: retry transient errors? Or rely on higher-level retry maybe?
