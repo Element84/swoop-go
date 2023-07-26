@@ -17,5 +17,3 @@ COPY --from=APP /opt/swoop-go/swoop /opt/swoop-go/
 
 # add binary to image path
 ENV PATH=/opt/swoop-go:$PATH
-
-ENTRYPOINT [ "swoop caboose argo" ]

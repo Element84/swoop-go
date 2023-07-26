@@ -14,7 +14,7 @@ jobs:
   build:
     env:
       context: .
-      image_name: swoop-caboose
+      image_name: swoop-go
       image_registry: "${{ secrets.REGISTRY_URI }}"
       image_repository: "${{ secrets.REGISTRY_REPOSITORY }}"
     runs-on: ubuntu-latest
