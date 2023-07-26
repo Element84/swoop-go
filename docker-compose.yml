@@ -1,24 +1,6 @@
 version: '3.8'
 
 services:
-  swoop-caboose:
-    build: .
-    restart: always
-    stdin_open: true
-    tty: true
-    environment:
-      SWOOP_DATABASE_HOST: "${SWOOP_DATABASE_HOST:-127.0.0.1}"
-      SWOOP_DATABASE_PORT: "${SWOOP_DATABASE_PORT:-5432}"
-      SWOOP_DATABASE_USER: "${SWOOP_DATABASE_USER:-postgres}"
-      SWOOP_DATABASE_PASSWORD: "${SWOOP_DATABASE_PASSWORD:-password}"
-      SWOOP_DATABASE_NAME: "${SWOOP_DATABASE_NAME:-swoop}"
-      SWOOP_DATABASE_URL_EXTRA: "${SWOOP_DATABASE_URL_EXTRA:-?sslmode=disable}"
-      AWS_ACCESS_KEY_ID: "${AWS_ACCESS_KEY_ID:-minio}"
-      AWS_SECRET_ACCESS_KEY: "${AWS_SECRET_ACCESS_KEY:-password}"
-      SWOOP_S3_ENDPOINT: "${SWOOP_S3_ENDPOINT:-http://127.0.0.1:9000}"
-      SWOOP_BUCKET_NAME: "${SWOOP_BUCKET_NAME:-swoop}"
-      SWOOP_EXECUTION_DIR: "${SWOOP_EXECUTION_DIR:-s3://swoop/execution}"
-
   server:
     image: "rancher/k3s:${K3S_VERSION:-latest}"
     # --tls-san server adds name "server" to TLS cert so the cert validates
