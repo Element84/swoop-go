@@ -15,5 +15,8 @@ WORKDIR /opt/swoop-go
 # copy only swoop binary to container image
 COPY --from=APP /opt/swoop-go/swoop /opt/swoop-go/
 
+# copy fixtures to container image
+COPY --from=APP /opt/swoop-go/fixtures /opt/swoop-go/fixtures
+
 # add binary to image path
 ENV PATH=/opt/swoop-go:$PATH
