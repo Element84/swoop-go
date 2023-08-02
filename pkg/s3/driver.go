@@ -182,7 +182,7 @@ func (d *S3Driver) Put(
 	return s3.PutStream(key, stream, length, opts.ToMinioOpts())
 }
 
-func (d *S3Driver) makeBucket(ctx context.Context) error {
+func (d *S3Driver) MakeBucket(ctx context.Context) error {
 	s3, err := d.newS3Client(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to create new S3 client: %v", err)
@@ -191,7 +191,7 @@ func (d *S3Driver) makeBucket(ctx context.Context) error {
 	return s3.MakeBucket()
 }
 
-func (d *S3Driver) removeBucket(ctx context.Context) error {
+func (d *S3Driver) RemoveBucket(ctx context.Context) error {
 	s3, err := d.newS3Client(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to create new S3 client: %v", err)

@@ -25,13 +25,13 @@ func TestDriver(t *testing.T) {
 	}
 
 	defer func() {
-		err := driver.removeBucket(ctx)
+		err := driver.RemoveBucket(ctx)
 		if err != nil {
 			t.Fatalf("failed to remove bucket: %s", err)
 		}
 	}()
 
-	err = driver.makeBucket(ctx)
+	err = driver.MakeBucket(ctx)
 	if err != nil {
 		t.Fatalf("failed to make bucket: %s", err)
 	}
