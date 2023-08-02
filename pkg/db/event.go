@@ -5,18 +5,18 @@ import (
 	"time"
 
 	"github.com/gofrs/uuid/v5"
-	"github.com/jackc/pgx/v5/pgconn"
-	"github.com/jackc/pgx/v5/pgxpool"
+
+	"github.com/element84/swoop-go/pkg/states"
 )
 
 type Event struct {
-	ActionUUID uuid.UUID
-	EventTime  time.Time
-	Status     string
+	ActionUuid uuid.UUID
+	Time       time.Time
+	Status     states.WorkflowState
 	ErrorMsg   string
 }
 
-func (s *Event) Insert(ctx context.Context, db *pgxpool.Pool) (pgconn.CommandTag, error) {
+func (s *Event) Insert(ctx context.Context, conn Conn) error {
 	/*
 		// We could do something like this if we wanted to prevent events being inserted for
 		// unknown workflows. In reality, however, the current risk of not checking seems low.
@@ -38,25 +38,49 @@ func (s *Event) Insert(ctx context.Context, db *pgxpool.Pool) (pgconn.CommandTag
 			return nil, fmt.Errorf("Cannot insert event, unknown action UUID: '%s'", s.actionUUID)
 		}
 	*/
+	var err error
 
-	return db.Exec(
-		ctx,
-		`INSERT INTO swoop.event (
-		    action_uuid,
-			event_time,
-			status,
-			error,
-			event_source
-		) VALUES (
-			$1,
-			$2,
-			$3,
-			$4,
-			'swoop-caboose'
-		) ON CONFLICT DO NOTHING`,
-		s.ActionUUID,
-		s.EventTime,
-		s.Status,
-		s.ErrorMsg,
-	)
+	if s.Time.IsZero() {
+		_, err = conn.Exec(
+			ctx,
+			`INSERT INTO swoop.event (
+				event_time,
+				action_uuid,
+				status,
+				error,
+				event_source
+			) VALUES (
+				now(),
+				$1,
+				$2,
+				$3,
+				'swoop-caboose'
+			) ON CONFLICT DO NOTHING`,
+			s.ActionUuid,
+			s.Status,
+			s.ErrorMsg,
+		)
+	} else {
+		_, err = conn.Exec(
+			ctx,
+			`INSERT INTO swoop.event (
+				action_uuid,
+				event_time,
+				status,
+				error,
+				event_source
+			) VALUES (
+				$1,
+				$2,
+				$3,
+				$4,
+				'swoop-caboose'
+			) ON CONFLICT DO NOTHING`,
+			s.ActionUuid,
+			s.Time,
+			s.Status,
+			s.ErrorMsg,
+		)
+	}
+	return err
 }
