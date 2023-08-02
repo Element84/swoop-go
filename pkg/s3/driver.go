@@ -156,14 +156,30 @@ func (d *S3Driver) Get(ctx context.Context, key string) (*minio.Object, error) {
 	return s3.GetStream(key)
 }
 
-func (d *S3Driver) Put(ctx context.Context, key string, stream io.Reader, length int64) error {
+type PutOptions minio.PutObjectOptions
+
+func (po PutOptions) ToMinioOpts() minio.PutObjectOptions {
+	return minio.PutObjectOptions(po)
+}
+
+func (d *S3Driver) Put(
+	ctx context.Context,
+	key string,
+	stream io.Reader,
+	length int64,
+	opts *PutOptions,
+) error {
 	// TODO: retry transient errors? Or rely on higher-level retry maybe?
 	s3, err := d.newS3Client(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to create new S3 client: %v", err)
 	}
 
-	return s3.PutStream(key, stream, length)
+	if opts == nil {
+		opts = &PutOptions{}
+	}
+
+	return s3.PutStream(key, stream, length, opts.ToMinioOpts())
 }
 
 func (d *S3Driver) makeBucket(ctx context.Context) error {
