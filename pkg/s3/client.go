@@ -45,14 +45,19 @@ func (s3 *s3client) GetStream(key string) (*minio.Object, error) {
 	return stream, nil
 }
 
-func (s3 *s3client) PutStream(key string, stream io.Reader, length int64) error {
+func (s3 *s3client) PutStream(
+	key string,
+	stream io.Reader,
+	length int64,
+	opts minio.PutObjectOptions,
+) error {
 	_, err := s3.minioClient.PutObject(
 		s3.context,
 		s3.Bucket,
 		key,
 		stream,
 		length,
-		minio.PutObjectOptions{},
+		opts,
 	)
 
 	return err

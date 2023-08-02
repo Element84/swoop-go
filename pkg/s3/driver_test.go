@@ -37,7 +37,7 @@ func TestDriver(t *testing.T) {
 	}
 
 	reader := bytes.NewReader([]byte(testContent))
-	err = driver.Put(ctx, key, reader, int64(reader.Len()))
+	err = driver.Put(ctx, key, reader, int64(reader.Len()), nil)
 	if err != nil {
 		t.Fatalf("failed to put: %s", err)
 	}
