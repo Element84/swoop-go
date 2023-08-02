@@ -13,8 +13,6 @@ handlers:
   publishS3Handler:
     type: httpHandler
     url: https://{secrets.minio-user}:{secrets.minio-password}@our-minio:9000
-    # we _can_ template here, but it means every callback will use the same template
-    # we can use conditional operators in the template to define differences if any exist
     requestBody: |
       {
         "fixed": "a_value",
@@ -49,17 +47,12 @@ handlers:
       - status: 400
         message: ".*timed out.*"
         retryable: true
-    # parameters are extracted by caboose from input.json, output.json, or the workflow resource
-    # the parameters json is written to object storage with a key like
-    # /callbacks/<action_uuid>/parameters.json
-    # conductor will have the callback action_uuid so will be able to load the parameters.json
-    # from object storage and use that for templating at request time
     parameters:
       workflowName:
-        # types?
-        # how do we distinguish between default being set to null and it not being set at all?
-        default: a_value # setting a default makes a parameter not required
+        type: string
+        default: a_value
       feature:
+        type: object
 
 conductors:
   instance-a:
@@ -70,20 +63,15 @@ conductors:
 callbacks:
   publishS3Push: &callbacksPublishS3Push
     handler: publishS3Handler
-    # per_feature creates a callback action for each feature in the output
     type: perFeature
-    on:
-      - "success"
+    when:
+      - "successful"
     featureFilter: "@.id =~ 'fake*' & @.properties.gsd <= 0"
     parameters:
       workflowName:
-        # TODO: need to add the workflow ID as a label on the workflow resource
-        # this property name is invalid
-        # Note these are _not_ templates, these are "select a value out of json"
-        # see kubectl --sort-by=
-        value: "{{ .workflow.resource.name -}}"
+        path: .input.features[0].id
       feature:
-        value: "{{ .feature }}"
+        value: { "feature": true }
     enabled: true
 
 workflows:
@@ -99,17 +87,13 @@ workflows:
     callbacks:
       publishS3Push:
         <<: *callbacksPublishS3Push
-      bulkUpdate:
-        handler: bulkUpdateHandler
-        # single creates a single callback action
-        type: single
-        # We could provide a filter, but if we want all items we can omit it
-        # featureFilter: "@.id =~ 'fake*' & @.properties.gsd <= 0"
-        enabled: false
   cirrus-example:
     callbacks:
       publishS3Push:
         <<: *callbacksPublishS3Push
+        when:
+          - "!failed"
+          - "successful"
     title: "Cirrus example workflow"
     description: "An example workflow config for a cirrus workflow"
     version: 1
