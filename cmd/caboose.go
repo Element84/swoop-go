@@ -3,7 +3,7 @@ package cmd
 import (
 	"log"
 
-	"github.com/element84/swoop-go/pkg/caboose"
+	"github.com/element84/swoop-go/pkg/caboose/argo"
 
 	"github.com/element84/swoop-go/pkg/cmdutil"
 	"github.com/element84/swoop-go/pkg/config"
@@ -43,7 +43,7 @@ func mkCabooseCmd() *cobra.Command {
 					log.Fatalf("Error parsing config: %s", err)
 
 				}
-				err = cmdutil.Run(&caboose.ArgoCaboose{
+				err = cmdutil.Run(&argo.ArgoCaboose{
 					S3Driver:       s3Driver,
 					SwoopConfig:    sc,
 					K8sConfigFlags: configFlags,

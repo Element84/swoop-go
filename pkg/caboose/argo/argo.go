@@ -1,4 +1,4 @@
-package caboose
+package argo
 
 import (
 	"bytes"
@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"log"
 	"os"
-	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -28,9 +27,11 @@ import (
 	"github.com/gofrs/uuid/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/element84/swoop-go/pkg/caboose"
 	"github.com/element84/swoop-go/pkg/config"
 	"github.com/element84/swoop-go/pkg/db"
 	"github.com/element84/swoop-go/pkg/s3"
+	"github.com/element84/swoop-go/pkg/states"
 	"github.com/element84/swoop-go/pkg/utils"
 )
 
@@ -43,76 +44,52 @@ const (
 	instanceId           = ""
 )
 
-type workflowProperties struct {
-	startedAt    time.Time
-	finishedAt   time.Time
-	workflowUUID uuid.UUID
-	templateName string
-	status       string
-	errorMsg     string
-}
-
-func newWorkflowProperties(raw interface{}) (*workflowProperties, error) {
+func newWorkflowProperties(raw interface{}) (*caboose.WorkflowProperties, error) {
 	un, ok := raw.(*unstructured.Unstructured)
 	if !ok {
 		return nil, fmt.Errorf("failed to parse workflow: %v", raw)
 	}
 
 	labels := un.GetLabels()
-	status, _, _ := unstructured.NestedMap(un.Object, "status")
-	start, _, _ := unstructured.NestedString(status, "startedAt")
-	finish, _, _ := unstructured.NestedString(status, "finishedAt")
+	statusMap, _, _ := unstructured.NestedMap(un.Object, "status")
+	start, _, _ := unstructured.NestedString(statusMap, "startedAt")
+	finish, _, _ := unstructured.NestedString(statusMap, "finishedAt")
 
-	p := &workflowProperties{
-		workflowUUID: uuid.FromStringOrNil(un.GetName()),
-		templateName: labels[common.LabelKeyWorkflowTemplate],
+	p := &caboose.WorkflowProperties{
+		Uuid:         uuid.FromStringOrNil(un.GetName()),
+		TemplateName: labels[common.LabelKeyWorkflowTemplate],
 	}
 
-	p.statusFromPhase(labels[common.LabelKeyPhase])
-	p.startedAt, _ = time.Parse(time.RFC3339, start)
-	p.finishedAt, _ = time.Parse(time.RFC3339, finish)
-	p.errorMsg, _, _ = unstructured.NestedString(status, "message")
+	phase := labels[common.LabelKeyPhase]
+	status, err := statusFromPhase(phase)
+	if err != nil {
+		return nil, fmt.Errorf(
+			"Cannot map workflow phase '%s' to known status; cannot process workflow %v",
+			phase,
+			raw,
+		)
+	}
+	p.Status = status
 
-	if p.workflowUUID.IsNil() || p.templateName == "" {
+	p.StartedAt, _ = time.Parse(time.RFC3339, start)
+	p.FinishedAt, _ = time.Parse(time.RFC3339, finish)
+	p.ErrorMsg, _, _ = unstructured.NestedString(statusMap, "message")
+
+	if p.Uuid.IsNil() || p.TemplateName == "" {
 		return nil, fmt.Errorf("unknown workflow: %v", raw)
 	}
 
 	return p, nil
 }
 
-func (p *workflowProperties) statusFromPhase(phase string) {
+func statusFromPhase(phase string) (states.WorkflowState, error) {
 	if phase == "Succeeded" {
-		p.status = "SUCCESSFUL"
+		return states.Successful, nil
 	} else if phase == "Error" {
-		p.status = "FAILED"
-	} else {
-		p.status = strings.ToUpper(phase)
+		return states.Failed, nil
 	}
-}
 
-func (p *workflowProperties) toStartEvent() *db.Event {
-	return &db.Event{
-		ActionUUID: p.workflowUUID,
-		EventTime:  p.startedAt,
-		Status:     "RUNNING",
-	}
-}
-
-func (p *workflowProperties) toEndEvent() *db.Event {
-	return &db.Event{
-		ActionUUID: p.workflowUUID,
-		EventTime:  p.finishedAt,
-		Status:     p.status,
-		ErrorMsg:   p.errorMsg,
-	}
-}
-
-func (p *workflowProperties) runCallback(cb *config.Callback) bool {
-	if utils.Contains(cb.On, p.status) && !utils.Contains(cb.NotOn, p.status) {
-		return true
-	} else {
-		return false
-	}
+	return states.Parse(phase)
 }
 
 type wfEventType int
@@ -126,7 +103,7 @@ type workflowEvent struct {
 	eventType  wfEventType
 	wf         interface{}
 	retries    int
-	properties *workflowProperties
+	properties *caboose.WorkflowProperties
 }
 
 func newWorkflowEvent(eventType wfEventType, raw interface{}) (*workflowEvent, error) {
@@ -144,7 +121,7 @@ func newWorkflowEvent(eventType wfEventType, raw interface{}) (*workflowEvent, e
 
 type argoCabooseRunner struct {
 	s3Driver    *s3.S3Driver
-	swoopConfig *config.SwoopConfig
+	callbackMap caboose.CallbackMap
 	ctx         context.Context
 	db          *pgxpool.Pool
 	wfClientSet wfclientset.Interface
@@ -201,7 +178,7 @@ func (acr *argoCabooseRunner) process(wf *workflowEvent) {
 		if err != nil {
 			log.Printf(
 				"error encountered processing '%s': %s",
-				wf.properties.workflowUUID,
+				wf.properties.Uuid,
 				err,
 			)
 			go acr.backoff(wf)
@@ -226,13 +203,13 @@ func (acr *argoCabooseRunner) backoff(wf *workflowEvent) {
 }
 
 func (acr *argoCabooseRunner) wfStart(wf *workflowEvent) error {
-	_, err := wf.properties.toStartEvent().Insert(acr.ctx, acr.db)
+	err := wf.properties.ToStartEvent().Insert(acr.ctx, acr.db)
 	if err != nil {
 		return err
 	}
 	log.Printf(
 		"Inserted start event for workflow: '%s'",
-		wf.properties.workflowUUID,
+		wf.properties.Uuid,
 	)
 	return nil
 }
@@ -244,34 +221,39 @@ func (acr *argoCabooseRunner) wfDone(wf *workflowEvent) error {
 	}
 	defer tx.Rollback(acr.ctx)
 
-	_, err = wf.properties.toStartEvent().Insert(acr.ctx, acr.db)
+	err = wf.properties.ToStartEvent().Insert(acr.ctx, acr.db)
 	if err != nil {
 		return err
 	}
 	log.Printf(
 		"Inserted start event for workflow: '%s'",
-		wf.properties.workflowUUID,
+		wf.properties.Uuid,
 	)
 
-	_, err = wf.properties.toEndEvent().Insert(acr.ctx, acr.db)
+	err = wf.properties.ToEndEvent().Insert(acr.ctx, acr.db)
 	if err != nil {
 		return err
 	}
 	log.Printf(
 		"Inserted end event for workflow: '%s'",
-		wf.properties.workflowUUID,
+		wf.properties.Uuid,
 	)
 
 	b := new(bytes.Buffer)
-	json.NewEncoder(b).Encode(wf.wf)
+	err = json.NewEncoder(b).Encode(wf.wf)
+	if err != nil {
+		return err
+	}
+
 	err = acr.s3Driver.Put(
 		acr.ctx,
 		fmt.Sprintf(
 			"executions/%s/workflow.json",
-			wf.properties.workflowUUID,
+			wf.properties.Uuid,
 		),
 		b,
 		int64(b.Len()),
+		nil,
 	)
 	if err != nil {
 		return err
@@ -362,7 +344,7 @@ func (c *ArgoCaboose) newArgoCabooseRunner(ctx context.Context) (*argoCabooseRun
 
 	return &argoCabooseRunner{
 		s3Driver:    c.S3Driver,
-		swoopConfig: c.SwoopConfig,
+		callbackMap: caboose.MapConfigCallbacks(c.SwoopConfig),
 		ctx:         ctx,
 		db:          db,
 		wfClientSet: wfClientSet,
