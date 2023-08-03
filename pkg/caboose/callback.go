@@ -1,16 +1,11 @@
 package caboose
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
 	"fmt"
-
-	"github.com/gofrs/uuid/v5"
 
 	"github.com/element84/swoop-go/pkg/config"
 	"github.com/element84/swoop-go/pkg/db"
-	"github.com/element84/swoop-go/pkg/s3"
 	"github.com/element84/swoop-go/pkg/states"
 )
 
@@ -53,78 +48,12 @@ func (cm CallbackMap) lookup(wfName string, status states.FinalState) (Callbacks
 
 type CallbackExecutor struct {
 	ctx  context.Context
-	s3   *s3.S3Driver
+	s3   *S3
 	conn db.Conn
 }
 
-func NewCallbackExecutor(ctx context.Context, s3 *s3.S3Driver, conn db.Conn) *CallbackExecutor {
+func NewCallbackExecutor(ctx context.Context, s3 *S3, conn db.Conn) *CallbackExecutor {
 	return &CallbackExecutor{ctx, s3, conn}
-}
-
-// TODO: probably extract these to a wrapper around the driver,
-//
-//	so we can use the put method for the workflow resource
-func (cbx *CallbackExecutor) getJsonFromObject(key string) (any, error) {
-	stream, err := cbx.s3.Get(cbx.ctx, key)
-	if err != nil {
-		return nil, err
-	}
-	defer stream.Close()
-
-	stat, err := stream.Stat()
-	if err != nil {
-		return nil, err
-	}
-
-	contentBytes := make([]byte, stat.Size)
-	b, err := stream.Read(contentBytes)
-	if int64(b) != stat.Size && err != nil {
-		return nil, err
-	}
-
-	var j any
-	err = json.Unmarshal(contentBytes, &j)
-	if err != nil {
-		return nil, err
-	}
-
-	return j, nil
-}
-
-func (cbx *CallbackExecutor) putJsonIntoObject(key string, j any) error {
-	b := new(bytes.Buffer)
-	err := json.NewEncoder(b).Encode(j)
-	if err != nil {
-		return err
-	}
-
-	opts := &s3.PutOptions{
-		// allows us to preview in the minio console
-		// application/json would be more appropriate but can't be previewed
-		ContentType: "text/plain",
-	}
-
-	err = cbx.s3.Put(cbx.ctx, key, b, int64(b.Len()), opts)
-	if err != nil {
-		return err
-	}
-
-	return nil
-}
-
-func (cbx *CallbackExecutor) getInput(workflowUUID uuid.UUID) (any, error) {
-	key := fmt.Sprintf("/executions/%s/input.json", workflowUUID)
-	return cbx.getJsonFromObject(key)
-}
-
-func (cbx *CallbackExecutor) getOutput(workflowUUID uuid.UUID) (any, error) {
-	key := fmt.Sprintf("/executions/%s/output.json", workflowUUID)
-	return cbx.getJsonFromObject(key)
-}
-
-func (cbx *CallbackExecutor) putCallbackParams(callbackUUID uuid.UUID, json any) error {
-	key := fmt.Sprintf("callbacks/%s/parameters.json", callbackUUID)
-	return cbx.putJsonIntoObject(key, json)
 }
 
 func (cbx *CallbackExecutor) extractParams(
@@ -175,7 +104,7 @@ func (cbx *CallbackExecutor) processCallback(
 
 	params, err := cbx.extractParams(cb.Parameters, cb.ValidateParams, data)
 	if err != nil {
-		// an error validating params is fatal and should not be retried
+		// an error extracting params is fatal and should not be retried
 		// so we insert a failure for the callback and return early
 		event := &db.Event{
 			ActionUuid: cbUuid,
@@ -189,7 +118,7 @@ func (cbx *CallbackExecutor) processCallback(
 		return nil
 	}
 
-	err = cbx.putCallbackParams(cbUuid, params)
+	err = cbx.s3.PutCallbackParams(cbx.ctx, cbUuid, params)
 	if err != nil {
 		return err
 	}
@@ -198,12 +127,12 @@ func (cbx *CallbackExecutor) processCallback(
 }
 
 func (cbx *CallbackExecutor) ProcessCallbacks(cbs Callbacks, wfProps *WorkflowProperties) error {
-	input, err := cbx.getInput(wfProps.Uuid)
+	input, err := cbx.s3.GetInput(cbx.ctx, wfProps.Uuid)
 	if err != nil {
 		return err
 	}
 
-	output, err := cbx.getOutput(wfProps.Uuid)
+	output, err := cbx.s3.GetOutput(cbx.ctx, wfProps.Uuid)
 	if err != nil {
 		return err
 	}
