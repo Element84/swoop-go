@@ -42,44 +42,6 @@ const (
 	instanceId           = ""
 )
 
-func newWorkflowProperties(raw interface{}) (*caboose.WorkflowProperties, error) {
-	un, ok := raw.(*unstructured.Unstructured)
-	if !ok {
-		return nil, fmt.Errorf("failed to parse workflow: %v", raw)
-	}
-
-	labels := un.GetLabels()
-	statusMap, _, _ := unstructured.NestedMap(un.Object, "status")
-	start, _, _ := unstructured.NestedString(statusMap, "startedAt")
-	finish, _, _ := unstructured.NestedString(statusMap, "finishedAt")
-
-	p := &caboose.WorkflowProperties{
-		Uuid:         uuid.FromStringOrNil(un.GetName()),
-		TemplateName: labels[common.LabelKeyWorkflowTemplate],
-	}
-
-	phase := labels[common.LabelKeyPhase]
-	status, err := statusFromPhase(phase)
-	if err != nil {
-		return nil, fmt.Errorf(
-			"Cannot map workflow phase '%s' to known status; cannot process workflow %v",
-			phase,
-			raw,
-		)
-	}
-	p.Status = status
-
-	p.StartedAt, _ = time.Parse(time.RFC3339, start)
-	p.FinishedAt, _ = time.Parse(time.RFC3339, finish)
-	p.ErrorMsg, _, _ = unstructured.NestedString(statusMap, "message")
-
-	if p.Uuid.IsNil() || p.TemplateName == "" {
-		return nil, fmt.Errorf("unknown workflow: %v", raw)
-	}
-
-	return p, nil
-}
-
 func statusFromPhase(phase string) (states.WorkflowState, error) {
 	if phase == "Succeeded" {
 		return states.Successful, nil
@@ -104,8 +66,19 @@ type workflowEvent struct {
 	properties *caboose.WorkflowProperties
 }
 
-func newWorkflowEvent(eventType wfEventType, raw interface{}) (*workflowEvent, error) {
-	properties, err := newWorkflowProperties(raw)
+type argoCabooseRunner struct {
+	s3          *caboose.S3
+	callbackMap caboose.CallbackMap
+	ctx         context.Context
+	db          *pgxpool.Pool
+	wfClientSet wfclientset.Interface
+	dynIface    *dynamic.DynamicClient
+	wg          *sync.WaitGroup
+	wfChan      chan *workflowEvent
+}
+
+func (acr *argoCabooseRunner) newWorkflowEvent(eventType wfEventType, raw any) (*workflowEvent, error) {
+	properties, err := acr.newWorkflowProperties(raw)
 	if err != nil {
 		return nil, err
 	}
@@ -117,15 +90,51 @@ func newWorkflowEvent(eventType wfEventType, raw interface{}) (*workflowEvent, e
 	}, nil
 }
 
-type argoCabooseRunner struct {
-	s3          *caboose.S3
-	callbackMap caboose.CallbackMap
-	ctx         context.Context
-	db          *pgxpool.Pool
-	wfClientSet wfclientset.Interface
-	dynIface    *dynamic.DynamicClient
-	wg          *sync.WaitGroup
-	wfChan      chan *workflowEvent
+func (acr *argoCabooseRunner) newWorkflowProperties(raw any) (*caboose.WorkflowProperties, error) {
+	un, ok := raw.(*unstructured.Unstructured)
+	if !ok {
+		return nil, fmt.Errorf("failed to parse workflow: %v", raw)
+	}
+
+	labels := un.GetLabels()
+	statusMap, _, _ := unstructured.NestedMap(un.Object, "status")
+	start, _, _ := unstructured.NestedString(statusMap, "startedAt")
+	finish, _, _ := unstructured.NestedString(statusMap, "finishedAt")
+
+	p := &caboose.WorkflowProperties{
+		Uuid: uuid.FromStringOrNil(un.GetName()),
+	}
+
+	phase := labels[common.LabelKeyPhase]
+	status, err := statusFromPhase(phase)
+	if err != nil {
+		return nil, fmt.Errorf(
+			"Cannot map workflow phase '%s' to known status; cannot process workflow %v",
+			phase,
+			raw,
+		)
+	}
+	p.Status = status
+
+	p.StartedAt, _ = time.Parse(time.RFC3339, start)
+	p.FinishedAt, _ = time.Parse(time.RFC3339, finish)
+	p.ErrorMsg, _, _ = unstructured.NestedString(statusMap, "message")
+
+	if p.Uuid.IsNil() {
+		return nil, fmt.Errorf("unknown workflow: %v", raw)
+	}
+
+	// TODO: need a label on workflows to prevent this lookup
+	err = p.LookupName(acr.ctx, acr.db)
+	if err != nil {
+		return nil, fmt.Errorf(
+			"failed to lookup workflow name for uuid '%s': %s",
+			p.Uuid,
+			err,
+		)
+	}
+
+	return p, nil
 }
 
 // TODO: how to restart failed workers?
@@ -292,6 +301,46 @@ func (acr *argoCabooseRunner) deleteWorkflow(wf *workflowEvent) error {
 	return nil
 }
 
+func (acr *argoCabooseRunner) addWorkflowInformerHandlers(
+	wfInformer cache.SharedIndexInformer,
+) {
+	handle := func(eventType wfEventType) func(interface{}) {
+		return func(obj interface{}) {
+			wf, err := acr.newWorkflowEvent(eventType, obj)
+			if err != nil {
+				log.Println(err)
+				return
+			}
+			acr.wfChan <- wf
+		}
+	}
+
+	// workflow start handler
+	wfInformer.AddEventHandler(
+		cache.FilteringResourceEventHandler{
+			FilterFunc: func(obj interface{}) bool {
+				un, ok := obj.(*unstructured.Unstructured)
+				return ok && un.GetLabels()[common.LabelKeyPhase] == "Running"
+			},
+			Handler: cache.ResourceEventHandlerFuncs{
+				AddFunc: handle(started),
+			},
+		},
+	)
+	// workflow completion handler
+	wfInformer.AddEventHandler(
+		cache.FilteringResourceEventHandler{
+			FilterFunc: func(obj interface{}) bool {
+				un, ok := obj.(*unstructured.Unstructured)
+				return ok && un.GetLabels()[common.LabelKeyCompleted] == "true"
+			},
+			Handler: cache.ResourceEventHandlerFuncs{
+				AddFunc: handle(completed),
+			},
+		},
+	)
+}
+
 type ArgoCaboose struct {
 	S3Driver       *s3.S3Driver
 	SwoopConfig    *config.SwoopConfig
@@ -365,7 +414,7 @@ func (c *ArgoCaboose) Run(ctx context.Context, cancel context.CancelFunc) error 
 		},
 	)
 
-	addWorkflowInformerHandlers(wfInformer, acr.wfChan)
+	acr.addWorkflowInformerHandlers(wfInformer)
 	go wfInformer.Run(ctx.Done())
 
 	// wait until sync'd
@@ -404,45 +453,4 @@ func (c *ArgoCaboose) SignalHandler(
 	case <-ctx.Done():
 		log.Printf("Done.")
 	}
-}
-
-func addWorkflowInformerHandlers(
-	wfInformer cache.SharedIndexInformer,
-	wfChan chan<- *workflowEvent,
-) {
-	handle := func(eventType wfEventType) func(interface{}) {
-		return func(obj interface{}) {
-			wf, err := newWorkflowEvent(eventType, obj)
-			if err != nil {
-				log.Println(err)
-				return
-			}
-			wfChan <- wf
-		}
-	}
-
-	// workflow start handler
-	wfInformer.AddEventHandler(
-		cache.FilteringResourceEventHandler{
-			FilterFunc: func(obj interface{}) bool {
-				un, ok := obj.(*unstructured.Unstructured)
-				return ok && un.GetLabels()[common.LabelKeyPhase] == "Running"
-			},
-			Handler: cache.ResourceEventHandlerFuncs{
-				AddFunc: handle(started),
-			},
-		},
-	)
-	// workflow completion handler
-	wfInformer.AddEventHandler(
-		cache.FilteringResourceEventHandler{
-			FilterFunc: func(obj interface{}) bool {
-				un, ok := obj.(*unstructured.Unstructured)
-				return ok && un.GetLabels()[common.LabelKeyCompleted] == "true"
-			},
-			Handler: cache.ResourceEventHandlerFuncs{
-				AddFunc: handle(completed),
-			},
-		},
-	)
 }
