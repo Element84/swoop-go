@@ -1,9 +1,7 @@
 package argo
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
 	"fmt"
 	"log"
 	"os"
@@ -120,7 +118,7 @@ func newWorkflowEvent(eventType wfEventType, raw interface{}) (*workflowEvent, e
 }
 
 type argoCabooseRunner struct {
-	s3Driver    *s3.S3Driver
+	s3          *caboose.S3
 	callbackMap caboose.CallbackMap
 	ctx         context.Context
 	db          *pgxpool.Pool
@@ -239,22 +237,7 @@ func (acr *argoCabooseRunner) wfDone(wf *workflowEvent) error {
 		wf.properties.Uuid,
 	)
 
-	b := new(bytes.Buffer)
-	err = json.NewEncoder(b).Encode(wf.wf)
-	if err != nil {
-		return err
-	}
-
-	err = acr.s3Driver.Put(
-		acr.ctx,
-		fmt.Sprintf(
-			"executions/%s/workflow.json",
-			wf.properties.Uuid,
-		),
-		b,
-		int64(b.Len()),
-		nil,
-	)
+	err = acr.s3.PutWorkflowResource(acr.ctx, wf.properties.Uuid, wf.wf)
 	if err != nil {
 		return err
 	}
@@ -343,7 +326,7 @@ func (c *ArgoCaboose) newArgoCabooseRunner(ctx context.Context) (*argoCabooseRun
 	var wg sync.WaitGroup
 
 	return &argoCabooseRunner{
-		s3Driver:    c.S3Driver,
+		s3:          caboose.NewS3(c.S3Driver),
 		callbackMap: caboose.MapConfigCallbacks(c.SwoopConfig),
 		ctx:         ctx,
 		db:          db,
