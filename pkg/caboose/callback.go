@@ -147,26 +147,55 @@ func (cbx *CallbackExecutor) ProcessCallbacks(cbs Callbacks, wfProps *WorkflowPr
 		case config.SingleCallback:
 			err := cbx.processCallback(callback, wfProps, &data)
 			if err != nil {
-				// TODO
-				return err
+				// if we get an error back here it is possibly a transient problem
+				// we return it to bubble it up to the general workflow retry mechanism
+				return fmt.Errorf(
+					"workflow '%s' callback '%s' failed: %s",
+					wfProps.Name,
+					callback.Name,
+					err,
+				)
 			}
 		case config.PerFeatureCallback:
-			// TODO: probably need a safer way to handle this json query
-			features, ok := input.(map[string]any)["features"].([]any)
+			features, ok := output.(map[string]any)["features"].([]any)
 			if !ok {
-				// TODO
-				return fmt.Errorf("failed to get features")
+				// this is not a retryable error -- output won't change
+				// TODO: insert callback and fail it
+				_ = fmt.Errorf(
+					"workflow '%s' callback '%s' is type '%s' but extracting output features failed",
+					wfProps.Name,
+					callback.Name,
+					callback.Type,
+				)
+				continue
 			}
-			for _, feature := range features {
+			for featIdx, feature := range features {
 				data["feature"] = feature
 				err := cbx.processCallback(callback, wfProps, &data)
 				if err != nil {
-					return err
-					// TODO
+					// if we get an error back here it is possibly a transient problem
+					// we return it to bubble it up to the general workflow retry mechanism
+					return fmt.Errorf(
+						"workflow '%s' callback '%s' for feature index '%d' failed: %s",
+						wfProps.Name,
+						callback.Name,
+						featIdx,
+						err,
+					)
 				}
 			}
 		default:
-			return fmt.Errorf("Unknown callback type: '%s'", callback.Type)
+			// this is not a retryable error, so we shouldn't return it as one
+			// we really shouldn't get here, at least not with callbacks coming
+			// from the config file
+			// TODO: insert callback and fail it
+			_ = fmt.Errorf(
+				"workflow '%s' callback '%s' has unknown callback type '%s'",
+				wfProps.Name,
+				callback.Name,
+				callback.Type,
+			)
+			continue
 		}
 	}
 

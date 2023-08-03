@@ -1,6 +1,8 @@
 package caboose
 
 import (
+	"context"
+	"fmt"
 	"time"
 
 	"github.com/gofrs/uuid/v5"
@@ -13,10 +15,9 @@ type WorkflowProperties struct {
 	StartedAt  time.Time
 	FinishedAt time.Time
 	Uuid       uuid.UUID
-	// TODO template name is argo specific, what is the generic?
-	TemplateName string
-	Status       states.WorkflowState
-	ErrorMsg     string
+	Name       string
+	Status     states.WorkflowState
+	ErrorMsg   string
 }
 
 func (p *WorkflowProperties) ToStartEvent() *db.Event {
@@ -34,4 +35,25 @@ func (p *WorkflowProperties) ToEndEvent() *db.Event {
 		Status:     p.Status,
 		ErrorMsg:   p.ErrorMsg,
 	}
+}
+
+func (p *WorkflowProperties) LookupName(ctx context.Context, conn db.Conn) error {
+	if p.Name != "" {
+		// nothing to do if it is already set
+		return nil
+	}
+
+	if p.Uuid.IsNil() {
+		return fmt.Errorf("cannot lookup workflow execution name with nil uuid")
+	}
+
+	name, err := (&db.WorkflowNameQuery{
+		WorkflowUuid: p.Uuid,
+	}).Exec(ctx, conn)
+	if err != nil {
+		return err
+	}
+
+	p.Name = name
+	return nil
 }
