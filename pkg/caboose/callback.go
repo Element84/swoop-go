@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/gofrs/uuid/v5"
+
 	"github.com/element84/swoop-go/pkg/config"
 	"github.com/element84/swoop-go/pkg/db"
 	"github.com/element84/swoop-go/pkg/states"
@@ -86,36 +88,73 @@ func (cbx *CallbackExecutor) extractParams(
 	return &params, nil
 }
 
-func (cbx *CallbackExecutor) processCallback(
-	cb *config.Callback, wfProps *WorkflowProperties, data *map[string]any,
-) error {
+func (cbx *CallbackExecutor) insertCallback(
+	name string,
+	handlerName string,
+	handlerType string,
+	wfUuid uuid.UUID,
+) (uuid.UUID, error) {
 	cbUuid, err := db.NewCallbackAction(
-		cb.Name,
-		cb.HandlerName,
-		cb.Handler.Type,
-		wfProps.Uuid,
+		name,
+		handlerName,
+		handlerType,
+		wfUuid,
 	).Insert(cbx.ctx, cbx.conn)
+
+	if err != nil {
+		return uuid.UUID{}, err
+
+	}
+	if cbUuid.IsNil() {
+		return uuid.UUID{}, fmt.Errorf("no uuid returned for callback action")
+	}
+
+	return cbUuid, nil
+}
+
+func (cbx *CallbackExecutor) failCallback(cbUuid uuid.UUID, err error) error {
+	event := &db.Event{
+		ActionUuid: cbUuid,
+		Status:     states.Failed,
+		ErrorMsg:   err.Error(),
+	}
+
+	err = event.Insert(cbx.ctx, cbx.conn)
 	if err != nil {
 		return err
 	}
-	if cbUuid.IsNil() {
-		return fmt.Errorf("no uuid returned for callback action")
+
+	return nil
+}
+
+func (cbx *CallbackExecutor) insertAndFailCallback(
+	name string,
+	handlerName string,
+	handlerType string,
+	wfUuid uuid.UUID,
+	err error,
+) error {
+	cbUuid, _err := cbx.insertCallback(name, handlerName, handlerType, wfUuid)
+	if _err != nil {
+		return _err
+	}
+
+	return cbx.failCallback(cbUuid, err)
+}
+
+func (cbx *CallbackExecutor) processCallback(
+	cb *config.Callback, wfProps *WorkflowProperties, data *map[string]any,
+) error {
+	cbUuid, err := cbx.insertCallback(cb.Name, cb.HandlerName, cb.Handler.Type, wfProps.Uuid)
+	if err != nil {
+		return err
 	}
 
 	params, err := cbx.extractParams(cb.Parameters, cb.ValidateParams, data)
 	if err != nil {
 		// an error extracting params is fatal and should not be retried
 		// so we insert a failure for the callback and return early
-		event := &db.Event{
-			ActionUuid: cbUuid,
-			Status:     states.Failed,
-			ErrorMsg:   err.Error(),
-		}
-		err := event.Insert(cbx.ctx, cbx.conn)
-		if err != nil {
-			return err
-		}
-		return nil
+		return cbx.failCallback(cbUuid, err)
 	}
 
 	err = cbx.s3.PutCallbackParams(cbx.ctx, cbUuid, params)
@@ -160,13 +199,29 @@ func (cbx *CallbackExecutor) ProcessCallbacks(cbs Callbacks, wfProps *WorkflowPr
 			features, ok := output.(map[string]any)["features"].([]any)
 			if !ok {
 				// this is not a retryable error -- output won't change
-				// TODO: insert callback and fail it
-				_ = fmt.Errorf(
+				err := fmt.Errorf(
 					"workflow '%s' callback '%s' is type '%s' but extracting output features failed",
 					wfProps.Name,
 					callback.Name,
 					callback.Type,
 				)
+
+				err = cbx.insertAndFailCallback(
+					callback.Name,
+					callback.HandlerName,
+					callback.Handler.Type,
+					wfProps.Uuid,
+					err,
+				)
+				if err != nil {
+					return fmt.Errorf(
+						"workflow '%s' callback '%s' failed to fail: %s",
+						wfProps.Name,
+						callback.Name,
+						err,
+					)
+				}
+
 				continue
 			}
 			for featIdx, feature := range features {
@@ -188,13 +243,29 @@ func (cbx *CallbackExecutor) ProcessCallbacks(cbs Callbacks, wfProps *WorkflowPr
 			// this is not a retryable error, so we shouldn't return it as one
 			// we really shouldn't get here, at least not with callbacks coming
 			// from the config file
-			// TODO: insert callback and fail it
-			_ = fmt.Errorf(
+			err := fmt.Errorf(
 				"workflow '%s' callback '%s' has unknown callback type '%s'",
 				wfProps.Name,
 				callback.Name,
 				callback.Type,
 			)
+
+			err = cbx.insertAndFailCallback(
+				callback.Name,
+				callback.HandlerName,
+				callback.Handler.Type,
+				wfProps.Uuid,
+				err,
+			)
+			if err != nil {
+				return fmt.Errorf(
+					"workflow '%s' callback '%s' failed to fail: %s",
+					wfProps.Name,
+					callback.Name,
+					err,
+				)
+			}
+
 			continue
 		}
 	}
