@@ -20,3 +20,17 @@ func IntPow(n, m int) int {
 	}
 	return result
 }
+
+func Concat[T any](slices ...[]T) []T {
+	capacity := 0
+	for _, slice := range slices {
+		capacity += len(slice)
+	}
+
+	s := make([]T, 0, capacity)
+	for _, slice := range slices {
+		s = append(s, slice...)
+	}
+
+	return s
+}

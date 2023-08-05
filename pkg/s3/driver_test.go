@@ -1,39 +1,27 @@
-package s3
+package s3_test
 
 import (
 	"bytes"
 	"context"
-	"os"
 	"testing"
+
+	testS3 "github.com/element84/swoop-go/pkg/utils/testing/s3"
 )
 
 func TestDriver(t *testing.T) {
 	var err error
 	ctx := context.Background()
-	bucket := "testbucket"
 	key := "some/key/to/a/file"
 	testContent := "some test content"
 
-	driver := &S3Driver{
-		Bucket:   bucket,
-		Endpoint: os.Getenv("SWOOP_S3_ENDPOINT"),
-	}
+	t3 := testS3.NewTestingS3(t, "testing-s3-")
+	t3.SetupBucket(ctx)
+
+	driver := t3.Driver
 
 	err = driver.CheckConnect(ctx)
 	if err != nil {
 		t.Fatalf("failed when checking connection: %s", err)
-	}
-
-	defer func() {
-		err := driver.RemoveBucket(ctx)
-		if err != nil {
-			t.Fatalf("failed to remove bucket: %s", err)
-		}
-	}()
-
-	err = driver.MakeBucket(ctx)
-	if err != nil {
-		t.Fatalf("failed to make bucket: %s", err)
 	}
 
 	reader := bytes.NewReader([]byte(testContent))
