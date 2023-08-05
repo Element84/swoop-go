@@ -82,7 +82,11 @@ services:
       - |
         for i in $$(seq 15); do
           sleep 2
-          swoop-db up && echo "SUCCESS: swoop-db applied migrations" && break
+          swoop-db up && {
+            echo "SUCCESS: swoop-db applied migrations"
+            swoop-db load-fixture base_01
+            break
+          }
         done
 
   minio:
