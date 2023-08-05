@@ -7,6 +7,7 @@ import (
 
 	"github.com/element84/swoop-go/pkg/cmdutil"
 	"github.com/element84/swoop-go/pkg/config"
+	"github.com/element84/swoop-go/pkg/db"
 	"github.com/element84/swoop-go/pkg/s3"
 	"github.com/spf13/cobra"
 	"k8s.io/cli-runtime/pkg/genericclioptions"
@@ -47,6 +48,7 @@ func mkCabooseCmd() *cobra.Command {
 					S3Driver:       s3Driver,
 					SwoopConfig:    sc,
 					K8sConfigFlags: configFlags,
+					DbConfig:       &db.ConnectConfig{},
 				})
 				if err != nil {
 					log.Fatalf("Error in caboose: %s", err)

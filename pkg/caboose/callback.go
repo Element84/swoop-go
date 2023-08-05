@@ -8,6 +8,7 @@ import (
 
 	"github.com/element84/swoop-go/pkg/config"
 	"github.com/element84/swoop-go/pkg/db"
+	"github.com/element84/swoop-go/pkg/s3"
 	"github.com/element84/swoop-go/pkg/states"
 )
 
@@ -34,15 +35,15 @@ func MapConfigCallbacks(sc *config.SwoopConfig) CallbackMap {
 	return cm
 }
 
-func (cm CallbackMap) lookup(wfName string, status states.FinalState) (Callbacks, bool) {
+func (cm CallbackMap) Lookup(wfName string, status states.FinalState) (Callbacks, bool) {
 	wf, ok := cm[wfName]
 	if !ok {
-		return nil, false
+		return Callbacks{}, false
 	}
 
 	cba, ok := wf[status]
 	if !ok {
-		return nil, false
+		return Callbacks{}, false
 	}
 
 	return cba, true
@@ -50,11 +51,11 @@ func (cm CallbackMap) lookup(wfName string, status states.FinalState) (Callbacks
 
 type CallbackExecutor struct {
 	ctx  context.Context
-	s3   *S3
+	s3   *s3.SwoopS3
 	conn db.Conn
 }
 
-func NewCallbackExecutor(ctx context.Context, s3 *S3, conn db.Conn) *CallbackExecutor {
+func NewCallbackExecutor(ctx context.Context, s3 *s3.SwoopS3, conn db.Conn) *CallbackExecutor {
 	return &CallbackExecutor{ctx, s3, conn}
 }
 
@@ -166,6 +167,10 @@ func (cbx *CallbackExecutor) processCallback(
 }
 
 func (cbx *CallbackExecutor) ProcessCallbacks(cbs Callbacks, wfProps *WorkflowProperties) error {
+	if len(cbs) == 0 {
+		return nil
+	}
+
 	input, err := cbx.s3.GetInput(cbx.ctx, wfProps.Uuid)
 	if err != nil {
 		return err

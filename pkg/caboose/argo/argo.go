@@ -67,7 +67,7 @@ type workflowEvent struct {
 }
 
 type argoCabooseRunner struct {
-	s3          *caboose.S3
+	s3          *s3.SwoopS3
 	callbackMap caboose.CallbackMap
 	ctx         context.Context
 	db          *pgxpool.Pool
@@ -251,6 +251,27 @@ func (acr *argoCabooseRunner) wfDone(wf *workflowEvent) error {
 		return err
 	}
 
+	callbacks, ok := acr.callbackMap.Lookup(
+		wf.properties.Name,
+		states.FinalState(wf.properties.Status),
+	)
+	if !ok {
+		log.Printf(
+			"No callbacks found for workflow '%s' with status '%s'",
+			wf.properties.Name,
+			wf.properties.Status,
+		)
+	}
+
+	err = caboose.NewCallbackExecutor(
+		acr.ctx,
+		acr.s3,
+		acr.db,
+	).ProcessCallbacks(callbacks, wf.properties)
+	if err != nil {
+		return err
+	}
+
 	// TODO: do we have a possible race here? If we delete the workflow before
 	// argo has finished with cleanup or other post-workflow tasks, will it
 	// lose the state it needs to finish them? How can we know the workflow is
@@ -345,6 +366,7 @@ type ArgoCaboose struct {
 	S3Driver       *s3.S3Driver
 	SwoopConfig    *config.SwoopConfig
 	K8sConfigFlags *genericclioptions.ConfigFlags
+	DbConfig       *db.ConnectConfig
 }
 
 func (c *ArgoCaboose) newArgoCabooseRunner(ctx context.Context) (*argoCabooseRunner, error) {
@@ -356,13 +378,11 @@ func (c *ArgoCaboose) newArgoCabooseRunner(ctx context.Context) (*argoCabooseRun
 		return nil, fmt.Errorf("failed checking connnection to object storage: %s", err)
 	}
 
-	// db connection
-	db, err := db.Connect(ctx)
+	db, err := c.DbConfig.Connect(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to database: %s", err)
 	}
 
-	// kube client
 	restConfig, err := c.K8sConfigFlags.ToRESTConfig()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get kubernetes config: %s", err)
@@ -375,7 +395,7 @@ func (c *ArgoCaboose) newArgoCabooseRunner(ctx context.Context) (*argoCabooseRun
 	var wg sync.WaitGroup
 
 	return &argoCabooseRunner{
-		s3:          caboose.NewS3(c.S3Driver),
+		s3:          s3.NewSwoopS3(s3.NewJsonClient(c.S3Driver)),
 		callbackMap: caboose.MapConfigCallbacks(c.SwoopConfig),
 		ctx:         ctx,
 		db:          db,
@@ -399,10 +419,9 @@ func (c *ArgoCaboose) Run(ctx context.Context, cancel context.CancelFunc) error 
 		namespace = *c.K8sConfigFlags.Namespace
 	}
 
-	// init wf informer
 	wfInformer := util.NewWorkflowInformer(
 		acr.dynIface,
-		namespace, // namespace name
+		namespace,
 		workflowResyncPeriod,
 		func(options *metav1.ListOptions) {
 			labelSelector := labels.NewSelector().
@@ -417,7 +436,6 @@ func (c *ArgoCaboose) Run(ctx context.Context, cancel context.CancelFunc) error 
 	acr.addWorkflowInformerHandlers(wfInformer)
 	go wfInformer.Run(ctx.Done())
 
-	// wait until sync'd
 	if !cache.WaitForCacheSync(
 		ctx.Done(),
 		wfInformer.HasSynced,
