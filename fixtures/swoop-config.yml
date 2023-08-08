@@ -8,6 +8,12 @@ handlers:
     type: cirrusWorkflowHandler
     #sqsUrl: https://sqs.aws.com/0142354653636::sqs::queue
 
+  noopHandler:
+    type: noop
+    parameters:
+      workflowUuid:
+        type: string
+
   # We believe it is best to re-template the request
   # (at least with regard to secrets) JIT for every request execution
   publishS3Handler:
@@ -87,6 +93,14 @@ workflows:
     callbacks:
       publishS3Push:
         <<: *callbacksPublishS3Push
+      failed:
+        handler: noopHandler
+        type: single
+        when:
+          - "!successful"
+        parameters:
+          workflowUuid:
+            path: .workflow.uuid
   cirrus-example:
     callbacks:
       publishS3Push:

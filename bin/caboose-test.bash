@@ -292,10 +292,6 @@ main() {
     callback3="$(get_callback_uuid "${uuid3}")"
     callback4="$(get_callback_uuid "${uuid4}")"
 
-    [ "${callback3}" == "" ] || {
-        echo2 "Action 3 should not have a callback; uuid: '${callback3}'"
-        rc=1
-    }
     [ "${callback4}" == "" ] || {
         echo2 "Action 4 should not have a callback; uuid: '${callback4}'"
         rc=1
@@ -307,6 +303,10 @@ main() {
     }
     has_callback_params "${callback2}" || {
         echo2 "Action 2 callback parameters not found; uuid: '${callback2}'"
+        rc=1
+    }
+    has_callback_params "${callback3}" || {
+        echo2 "Action 3 callback parameters not found; uuid: '${callback3}'"
         rc=1
     }
 

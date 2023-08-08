@@ -180,14 +180,17 @@ func (cbx *CallbackExecutor) ProcessCallbacks(cbs Callbacks, wfProps *WorkflowPr
 	if wfProps.Status == states.Successful {
 		_output, err := cbx.s3.GetOutput(cbx.ctx, wfProps.Uuid)
 		if err != nil {
+		// TODO: seems like we need to handle obviously-not-retryable
+		//       errors differently than those that could be retried.
 			return err
 		}
 		output = _output.(map[string]any)
 	}
 
 	data := map[string]any{
-		"input":  input,
-		"output": output,
+		"input":    input,
+		"output":   output,
+		"workflow": wfProps,
 	}
 
 	for _, callback := range cbs {
