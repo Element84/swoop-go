@@ -4,10 +4,14 @@ import (
 	"fmt"
 )
 
+// TODO: need better way to validate fields per callback type
+//
+//	-> this is a general problem for these "discriminated union" types
 type Callback struct {
-	Name          string              `yaml:"-"`
-	HandlerName   string              `yaml:"handler"`
-	Type          CallbackType        `yaml:"type"`
+	Name        string       `yaml:"-"`
+	HandlerName string       `yaml:"handler"`
+	Type        CallbackType `yaml:"type"`
+	// TODO: need to parse filter into a type
 	FeatureFilter string              `yaml:"featureFilter,omitempty"`
 	When          *CallbackWhen       `yaml:"when"`
 	Parameters    *CallbackParameters `yaml:"parameters,omitempty"`
