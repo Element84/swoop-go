@@ -13,6 +13,7 @@ handlers:
     parameters:
       workflowUuid:
         type: string
+        format: uuid
 
   # We believe it is best to re-template the request
   # (at least with regard to secrets) JIT for every request execution
