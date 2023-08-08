@@ -1,10 +1,20 @@
 #!/usr/bin/env bash
 
-set -euxo pipefail
+set -euo pipefail
 
 RUN_CLEANUP="true"
+VERBOSE="false"
 CABOOSE_START_TIME_SECS=2
 CABOOSE_TIME_LIMIT_SECS=4
+
+
+# output controls
+if [ "${VERBOSE}" == "true" ]; then
+    exec 3>&2
+    set -x
+else
+    exec 3>/dev/null
+fi
 
 
 find_this () {
@@ -87,38 +97,42 @@ psql() {
 
 # init/cleanup functions
 mktestdb() {
-    swoop_db up \
+    swoop_db up 1>&3 2>&3 \
         || fatal "Failed to create/migrate database"
-    swoop_db load-fixture "base_01" \
+    swoop_db load-fixture "base_01" 1>&3 2>&3 \
         || fatal "Failed to load base database fixture"
 }
 
 
 rmtestdb() {
-    swoop_db drop
+    swoop_db drop 1>&3 2>&3
+
 }
 
 
 mktestbucket() {
-    aws s3api create-bucket --bucket "${TESTNAME}"
+    aws s3api create-bucket --bucket "${TESTNAME}" 1>&3 2>&3
+
 }
 
 
 rmtestbucket() {
-    aws s3 rm "s3://${TESTNAME}" --recursive
+    aws s3 rm "s3://${TESTNAME}" --recursive 1>&3 2>&3
     aws s3api delete-bucket --bucket "${TESTNAME}"
 }
 
 
 mktestns() {
-    kubectl create namespace "${TESTNAME}"
+    kubectl create namespace "${TESTNAME}" 1>&3 2>&3
+
 }
 
 
 rmtestns() {
     # note that running this script in quick succession will
     # fail because the namespace will still be deleting
-    kubectl delete namespace "${TESTNAME}" --wait="false"
+    kubectl delete namespace "${TESTNAME}" --wait="false" 1>&3 2>&3
+
 }
 
 
@@ -132,7 +146,7 @@ caboose() {
     local pid
     (
         cd "${ROOT}"
-        ./swoop caboose argo -f "${CONFIG}" --namespace ${TESTNAME} &
+        ./swoop caboose argo -f "${CONFIG}" --namespace ${TESTNAME} 1>&3 2>&3 &
         pid=$!
         sleep $((CABOOSE_TIME_LIMIT_SECS + CABOOSE_START_TIME_SECS))
         kill "${pid}"
@@ -181,31 +195,34 @@ get_callback_uuid() {
 
 stage_action_input() {
     local uuid="${1?"must provide an action_uuid"}"
-    aws s3 cp "${PAYLOADS}/input.json" "s3://${TESTNAME}/executions/${uuid}/input.json"
+    aws s3 cp "${PAYLOADS}/input.json" "s3://${TESTNAME}/executions/${uuid}/input.json" 1>&3 2>&3
+
 }
 
 
 stage_action_output() {
     local uuid="${1?"must provide an action_uuid"}"
-    aws s3 cp "${PAYLOADS}/output.json" "s3://${TESTNAME}/executions/${uuid}/output.json"
+    aws s3 cp "${PAYLOADS}/output.json" "s3://${TESTNAME}/executions/${uuid}/output.json" 1>&3 2>&3
+
 }
 
 
 has_callback_params() {
     local uuid="${1?"must provide an action_uuid"}"
-    aws s3 ls "s3://${TESTNAME}/callbacks/${uuid}/parameters.json" >/dev/null 2>&1
+    aws s3 ls "s3://${TESTNAME}/callbacks/${uuid}/parameters.json" 1>&3 2>&3
 }
 
 
 apply_workflow_resource() {
     local uuid="${1?"must provide an action_uuid"}"
     local state="${2?"must provide workflow state (init, started, successful, failed)"}"
-    <"${RESOURCES}/${state}.json" sed "s/\${UUID}/${uuid}/" | kubectl -n "${TESTNAME}" apply -f -
+    <"${RESOURCES}/${state}.json" sed "s/\${UUID}/${uuid}/" | kubectl -n "${TESTNAME}" apply -f - 1>&3 2>&3
+
 }
 
 is_resource_in_cluster() {
     local uuid="${1?"must provide an action_uuid"}"
-    kubectl -n "${TESTNAME}" get workflows "${uuid}" >/dev/null 2>&1
+    kubectl -n "${TESTNAME}" get workflows "${uuid}" 1>&3 2>&3
 }
 
 
@@ -271,19 +288,19 @@ main() {
     status4="$(check_action_status "${uuid4}")"
 
     [ "${status1}" == "${expected1}" ] || {
-        echo2 "Action 1 status not equal to expected: ${status1} != ${expected1}"
+        echo2 "FAILED: Action 1 status not equal to expected: ${status1} != ${expected1}"
         rc=1
     }
     [ "${status2}" == "${expected2}" ] || {
-        echo2 "Action 2 status not equal to expected: ${status2} != ${expected2}"
+        echo2 "FAILED: Action 2 status not equal to expected: ${status2} != ${expected2}"
         rc=1
     }
     [ "${status3}" == "${expected3}" ] || {
-        echo2 "Action 3 status not equal to expected: ${status3} != ${expected3}"
+        echo2 "FAILED: Action 3 status not equal to expected: ${status3} != ${expected3}"
         rc=1
     }
     [ "${status4}" == "${expected4}" ] || {
-        echo2 "Action 4 status not equal to expected: ${status4} != ${expected4}"
+        echo2 "FAILED: Action 4 status not equal to expected: ${status4} != ${expected4}"
         rc=1
     }
 
@@ -292,39 +309,39 @@ main() {
     callback3="$(get_callback_uuid "${uuid3}")"
     callback4="$(get_callback_uuid "${uuid4}")"
 
-    [ "${callback4}" == "" ] || {
-        echo2 "Action 4 should not have a callback; uuid: '${callback4}'"
-        rc=1
-    }
-
     has_callback_params "${callback1}" || {
-        echo2 "Action 1 callback parameters not found; uuid: '${callback1}'"
+        echo2 "FAILED: Action 1 callback parameters not found; uuid: '${callback1}'"
         rc=1
     }
     has_callback_params "${callback2}" || {
-        echo2 "Action 2 callback parameters not found; uuid: '${callback2}'"
+        echo2 "FAILED: Action 2 callback parameters not found; uuid: '${callback2}'"
         rc=1
     }
     has_callback_params "${callback3}" || {
-        echo2 "Action 3 callback parameters not found; uuid: '${callback3}'"
+        echo2 "FAILED: Action 3 callback parameters not found; uuid: '${callback3}'"
+        rc=1
+    }
+
+    [ "${callback4}" == "" ] || {
+        echo2 "FAILED: Action 4 should not have a callback; uuid: '${callback4}'"
         rc=1
     }
 
     ! is_resource_in_cluster "${uuid1}" || {
-        echo2 "Action 1 resource not deleted from cluster"
+        echo2 "FAILED: Action 1 resource not deleted from cluster"
         rc=1
     }
     ! is_resource_in_cluster "${uuid2}" || {
-        echo2 "Action 2 resource not deleted from cluster"
+        echo2 "FAILED: Action 2 resource not deleted from cluster"
         rc=1
     }
     ! is_resource_in_cluster "${uuid3}" || {
-        echo2 "Action 3 resource not deleted from cluster"
+        echo2 "FAILED: Action 3 resource not deleted from cluster"
         rc=1
     }
 
     is_resource_in_cluster "${uuid4}" || {
-        echo2 "Action 4 resource not found in cluster"
+        echo2 "FAILED: Action 4 resource not found in cluster"
         rc=1
     }
 

@@ -103,46 +103,46 @@ To run the swoop cli after starting the docker compose (detailed above):
 docker compose exec swoop-caboose swoop
 ```
 
-## Manually testing `swoop caboose argo`
+## Testing `swoop caboose argo`
 
 The `argo` version of the `swoop caboose` command requires the full docker
-compose environment for testing. With that environment running, the service can
-be started (assuming from the root of the swoop-go repo):
+compose environment for testing, with database fixtures loaded. With that
+environment running, the service can be started (assuming from the root of the
+swoop-go repo):
 
 ```shell
 go run . caboose argo -f fixtures/swoop-config.yml --kubeconfig=./kubeconfig.yaml
 ```
 
-Template for simplified workflow resources are included in the `./fixtures`
-directory. They can be applied with `sed` and `kubectl`. Here is an example
-testing a workflow from the init stage (just created, hasn't been picked up by
-the Argo Workflows controller yet), through started and on to successful:
+However, actually testing `caboose` manually is a rather involved effort due to
+the amount of state that needs to be staged in the database, object storage,
+and the k8s cluster. To easier facilitate an end-to-end test of `caboose` we
+have the bash script `bin/caboose-test.bash`.
+
+That script will:
+
+1. setup a test database, bucket, and k8s namespace
+2. build the swoop-go executable
+3. create the necessary state in the db/bucket for the test cases
+4. run `swoop caboose argo` (runs in the background with a timeout)
+5. create the workflow resources in the cluster for the test cases
+6. validate everything expected occurred for each test case
+7. tear down the test database, bucket, and k8s namespace (unless `CLEANUP !=
+   "true"`)
+
+After starting the docker compose environment, run the script like:
 
 ```shell
-# create a UUID
-UUID="$(uuidgen | tr A-Z a-z)"
-
-# create a workflow resource in the init stage
-<./fixtures/resource/init.json sed "s/\${UUID}/${UUID}/" \
-    | kubectl --kubeconfig=./kubeconfig.yaml apply -f -
-
-# update the workflow resource to be started
-<./fixtures/resource/started.json sed "s/\${UUID}/${UUID}/" \
-    | kubectl --kubeconfig=./kubeconfig.yaml apply -f -
-
-# update the workflow resource to be successful
-<./fixtures/resource/successful.json sed "s/\${UUID}/${UUID}/" \
-    | kubectl --kubeconfig=./kubeconfig.yaml apply -f -
+./bin/caboose-test.bash && echo "PASSED tests" || echo "FAILED tests"
 ```
 
-Or if you want to test a workflow simply showing up in the failed state:
+The exit code of the script should be 0 if everything was as expected, else 1,
+hence the echos.
 
-```shell
-UUID="$(uuidgen | tr A-Z a-z)"
-<./fixtures/resource/failed.json sed "s/\${UUID}/${UUID}/" \
-    | kubectl --kubeconfig=./kubeconfig.yaml apply -f -
-```
-
-Testing the start behaivor with caboose is also valuable. Try creating workflow
-resources with caboose stopped, then start it and ensure it shows the proper
-event handling.
+When failures are encountered, it is often helpful to enable "verbose mode"
+(make the `VERBOSE` var equal `"true"`) and to disable `CLEANUP` (by setting it
+to `"false"`. Note though that with cleanup disabled successive runs of the
+script will fail; re-enable cleanup and and run the script once to trigger a
+failure and subsequent cleanup before running it again. Also note that deleting
+the k8s namespace does take some time, so running the test script in quick
+succession will likely fail per the namespace pending deletion.
