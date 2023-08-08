@@ -1,5 +1,9 @@
 package utils
 
+import (
+	"encoding/json"
+)
+
 func Contains[T comparable](slice []T, comp T) bool {
 	for _, val := range slice {
 		if val == comp {
@@ -33,4 +37,20 @@ func Concat[T any](slices ...[]T) []T {
 	}
 
 	return s
+}
+
+func Jsonify(data any) (map[string]any, error) {
+	var out map[string]any
+
+	b, err := json.Marshal(data)
+	if err != nil {
+		return nil, err
+	}
+
+	err = json.Unmarshal(b, &out)
+	if err != nil {
+		return nil, err
+	}
+
+	return out, nil
 }

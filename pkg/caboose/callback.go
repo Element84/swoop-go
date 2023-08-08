@@ -3,6 +3,7 @@ package caboose
 import (
 	"context"
 	"fmt"
+	"log"
 
 	"github.com/gofrs/uuid/v5"
 
@@ -10,6 +11,7 @@ import (
 	"github.com/element84/swoop-go/pkg/db"
 	"github.com/element84/swoop-go/pkg/s3"
 	"github.com/element84/swoop-go/pkg/states"
+	"github.com/element84/swoop-go/pkg/utils"
 )
 
 type Callbacks []*config.Callback
@@ -114,6 +116,7 @@ func (cbx *CallbackExecutor) insertCallback(
 }
 
 func (cbx *CallbackExecutor) failCallback(cbUuid uuid.UUID, err error) error {
+	log.Printf("ERROR: %s", err)
 	event := &db.Event{
 		ActionUuid: cbUuid,
 		Status:     states.Failed,
@@ -171,6 +174,12 @@ func (cbx *CallbackExecutor) ProcessCallbacks(cbs Callbacks, wfProps *WorkflowPr
 		return nil
 	}
 
+	jsonProps, err := utils.Jsonify(wfProps)
+	if err != nil {
+		// this really should not happen
+		return err
+	}
+
 	input, err := cbx.s3.GetInput(cbx.ctx, wfProps.Uuid)
 	if err != nil {
 		// TODO: seems like we need to handle obviously-not-retryable
@@ -192,7 +201,7 @@ func (cbx *CallbackExecutor) ProcessCallbacks(cbs Callbacks, wfProps *WorkflowPr
 	data := map[string]any{
 		"input":    input,
 		"output":   output,
-		"workflow": wfProps,
+		"workflow": jsonProps,
 	}
 
 	for _, callback := range cbs {

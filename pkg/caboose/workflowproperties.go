@@ -12,12 +12,12 @@ import (
 )
 
 type WorkflowProperties struct {
-	StartedAt  time.Time
-	FinishedAt time.Time
-	Uuid       uuid.UUID
-	Name       string
-	Status     states.WorkflowState
-	ErrorMsg   string
+	StartedAt  time.Time            `json:"startedAt"`
+	FinishedAt time.Time            `json:"finishedAt"`
+	Uuid       uuid.UUID            `json:"uuid"`
+	Name       string               `json:"name"`
+	Status     states.WorkflowState `json:"status"`
+	ErrorMsg   string               `json:"error"`
 }
 
 func (p *WorkflowProperties) ToStartEvent() *db.Event {
