@@ -176,9 +176,13 @@ func (cbx *CallbackExecutor) ProcessCallbacks(cbs Callbacks, wfProps *WorkflowPr
 		return err
 	}
 
-	output, err := cbx.s3.GetOutput(cbx.ctx, wfProps.Uuid)
-	if err != nil {
-		return err
+	output := map[string]any{}
+	if wfProps.Status == states.Successful {
+		_output, err := cbx.s3.GetOutput(cbx.ctx, wfProps.Uuid)
+		if err != nil {
+			return err
+		}
+		output = _output.(map[string]any)
 	}
 
 	data := map[string]any{
@@ -201,7 +205,7 @@ func (cbx *CallbackExecutor) ProcessCallbacks(cbs Callbacks, wfProps *WorkflowPr
 				)
 			}
 		case config.PerFeatureCallback:
-			features, ok := output.(map[string]any)["features"].([]any)
+			features, ok := output["features"].([]any)
 			if !ok {
 				// this is not a retryable error -- output won't change
 				err := fmt.Errorf(
