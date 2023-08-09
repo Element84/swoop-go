@@ -38,7 +38,7 @@ func initTest(ctx context.Context, t *testing.T, uuids []uuid.UUID) {
 		S3Driver:       t3.Driver,
 		SwoopConfig:    config.LoadConfigFixture(t),
 		K8sConfigFlags: testConfigFlags,
-		DbConfig:       testdb.Conf,
+		DbConfig:       testdb.PoolConfig(),
 	}
 }
 

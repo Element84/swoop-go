@@ -30,20 +30,28 @@ func resolveSwoopDB() []string {
 }
 
 type TestingDB struct {
-	test testing.TB
-	Conf *db.ConnectConfig
+	test     testing.TB
+	database string
 }
 
 func NewTestingDB(t testing.TB, prefix string) *TestingDB {
 	name := fmt.Sprintf("swoop-%s%s", prefix, t.Name())
 	return &TestingDB{
-		test: t,
-		Conf: &db.ConnectConfig{Database: &name},
+		test:     t,
+		database: name,
 	}
 }
 
-func (sdb *TestingDB) DatabaseName() string {
-	return *sdb.Conf.Database
+func (sdb *TestingDB) ConnectConfig() *db.ConnectConfig {
+	return &db.ConnectConfig{
+		Database: &sdb.database,
+	}
+}
+
+func (sdb *TestingDB) PoolConfig() *db.PoolConfig {
+	conf := &db.PoolConfig{}
+	conf.Database = &sdb.database
+	return conf
 }
 
 func (sdb *TestingDB) run(ctx context.Context, op []string) error {
@@ -54,7 +62,7 @@ func (sdb *TestingDB) run(ctx context.Context, op []string) error {
 func (sdb *TestingDB) Create(ctx context.Context) {
 	sdb.test.Cleanup(sdb.Drop)
 
-	op := []string{"up", "--database", sdb.DatabaseName()}
+	op := []string{"up", "--database", sdb.database}
 	err := sdb.run(ctx, op)
 	if err != nil {
 		sdb.test.Fatalf("failed to create test database: %s", err)
@@ -62,7 +70,7 @@ func (sdb *TestingDB) Create(ctx context.Context) {
 }
 
 func (sdb *TestingDB) LoadFixture(ctx context.Context, fixtureName string) {
-	op := []string{"load-fixture", fixtureName, "--database", sdb.DatabaseName()}
+	op := []string{"load-fixture", fixtureName, "--database", sdb.database}
 	err := sdb.run(ctx, op)
 	if err != nil {
 		sdb.test.Fatalf("failed to load fixture '%s': %s", fixtureName, err)
@@ -70,6 +78,6 @@ func (sdb *TestingDB) LoadFixture(ctx context.Context, fixtureName string) {
 }
 
 func (sdb *TestingDB) Drop() {
-	op := []string{"drop", "--database", sdb.DatabaseName()}
+	op := []string{"drop", "--database", sdb.database}
 	_ = sdb.run(context.Background(), op)
 }

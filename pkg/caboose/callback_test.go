@@ -33,7 +33,7 @@ func TestCallbacks(t *testing.T) {
 
 	testdb := db.NewTestingDB(t, "caboose_callbacks_")
 	testdb.Create(ctx)
-	db, err := testdb.Conf.Connect(ctx)
+	db, err := testdb.ConnectConfig().Connect(ctx)
 	if err != nil {
 		t.Fatalf("failed to get db connection: %s", err)
 	}
