@@ -48,7 +48,7 @@ func mkCabooseCmd() *cobra.Command {
 					S3Driver:       s3Driver,
 					SwoopConfig:    sc,
 					K8sConfigFlags: configFlags,
-					DbConfig:       &db.ConnectConfig{},
+					DbConfig:       &db.PoolConfig{},
 				})
 				if err != nil {
 					log.Fatalf("Error in caboose: %s", err)

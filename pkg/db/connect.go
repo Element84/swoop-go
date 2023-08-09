@@ -26,7 +26,26 @@ func (c ConnectConfig) String() string {
 	return strings.Join(params[:], " ")
 }
 
-func (conf *ConnectConfig) Connect(ctx context.Context) (*pgxpool.Pool, error) {
+func (conf *ConnectConfig) Connect(ctx context.Context) (*pgx.Conn, error) {
+	config, err := pgx.ParseConfig(conf.String())
+	if err != nil {
+		return nil, err
+	}
+
+	conn, err := pgx.ConnectConfig(ctx, config)
+	if err != nil {
+		return nil, err
+	}
+
+	pgxuuid.Register(conn.TypeMap())
+	return conn, nil
+}
+
+type PoolConfig struct {
+	ConnectConfig
+}
+
+func (conf *PoolConfig) Connect(ctx context.Context) (*pgxpool.Pool, error) {
 	config, err := pgxpool.ParseConfig(conf.String())
 	if err != nil {
 		return nil, err

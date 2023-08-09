@@ -366,7 +366,7 @@ type ArgoCaboose struct {
 	S3Driver       *s3.S3Driver
 	SwoopConfig    *config.SwoopConfig
 	K8sConfigFlags *genericclioptions.ConfigFlags
-	DbConfig       *db.ConnectConfig
+	DbConfig       *db.PoolConfig
 }
 
 func (c *ArgoCaboose) newArgoCabooseRunner(ctx context.Context) (*argoCabooseRunner, error) {
