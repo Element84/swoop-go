@@ -15,31 +15,25 @@ func init() {
 }
 
 func mkConfigCmd() *cobra.Command {
-	var (
-		configFile string
-	)
-
+	conf := &config.ConfigFile{}
 	cmd := &cobra.Command{
 		Use:   "config",
 		Short: "swoop command to verify/dump parsed config",
 		Run: func(cmd *cobra.Command, args []string) {
-			swoopConf, err := config.Parse(configFile)
+			sc, err := conf.Parse()
 			if err != nil {
-				log.Fatalf("error: %v", err)
+				log.Fatal(err)
 			}
 
-			d, err := yaml.Marshal(swoopConf)
+			d, err := yaml.Marshal(sc)
 			if err != nil {
-				log.Fatalf("error: %v", err)
+				log.Fatal(err)
 			}
 
 			fmt.Printf("%s\n", string(d))
 		},
 	}
-	cmd.PersistentFlags().StringVarP(
-		&configFile, "config-file", "f", "", "swoop config file path (required; SWOOP_CONFIG_FILE)",
-	)
-	cmd.MarkPersistentFlagRequired("config-file")
+	conf.AddFlags(cmd.PersistentFlags())
 
 	return cmd
 }
