@@ -17,10 +17,10 @@ import (
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/tools/cache"
 
+	"github.com/argoproj/argo-workflows/v3/pkg/apis/workflow/v1alpha1"
 	wfclientset "github.com/argoproj/argo-workflows/v3/pkg/client/clientset/versioned"
 	commonutil "github.com/argoproj/argo-workflows/v3/util"
 	"github.com/argoproj/argo-workflows/v3/workflow/common"
-	"github.com/argoproj/argo-workflows/v3/workflow/controller/indexes"
 	"github.com/argoproj/argo-workflows/v3/workflow/util"
 	"github.com/gofrs/uuid/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -41,6 +41,20 @@ const (
 	maxBackoff           = 300 * time.Second
 	instanceId           = ""
 )
+
+func indexFn(obj any) ([]string, error) {
+	un, ok := obj.(*unstructured.Unstructured)
+	if !ok {
+		return nil, nil
+	}
+
+	phase, ok := un.GetLabels()[common.LabelKeyPhase]
+	if !ok {
+		// default phase to pending
+		phase = string(v1alpha1.NodePending)
+	}
+	return []string{phase}, nil
+}
 
 func statusFromPhase(phase string) (states.WorkflowState, error) {
 	if phase == "Succeeded" {
@@ -429,7 +443,7 @@ func (c *ArgoCaboose) Run(ctx context.Context, cancel context.CancelFunc) error 
 			options.LabelSelector = labelSelector.String()
 		},
 		cache.Indexers{
-			indexes.WorkflowPhaseIndex: indexes.MetaWorkflowPhaseIndexFunc(),
+			"workflow.phase": indexFn,
 		},
 	)
 
