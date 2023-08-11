@@ -18,20 +18,14 @@ func init() {
 }
 
 func mkCabooseCmd() *cobra.Command {
-	var (
-		configFile string
-	)
-
 	cmd := &cobra.Command{
 		Use:   "caboose",
 		Short: "swoop-caboose commands for state updates",
 	}
 	s3Driver := &s3.S3Driver{}
 	s3Driver.AddFlags(cmd.PersistentFlags())
-	cmd.PersistentFlags().StringVarP(
-		&configFile, "config-file", "f", "", "swoop-caboose config file path (required; SWOOP_CONFIG_FILE)",
-	)
-	cmd.MarkPersistentFlagRequired("config-file")
+	conf := &config.ConfigFile{}
+	conf.AddFlags(cmd.PersistentFlags())
 
 	cmd.AddCommand(func() *cobra.Command {
 		configFlags := genericclioptions.NewConfigFlags(true)
@@ -39,10 +33,9 @@ func mkCabooseCmd() *cobra.Command {
 			Use:   "argo",
 			Short: "Run the caboose service for argo workflow integrations",
 			Run: func(cmd *cobra.Command, args []string) {
-				sc, err := config.Parse(configFile)
+				sc, err := conf.Parse()
 				if err != nil {
-					log.Fatalf("Error parsing config: %s", err)
-
+					log.Fatal(err)
 				}
 				err = cmdutil.Run(&argo.ArgoCaboose{
 					S3Driver:       s3Driver,
@@ -52,7 +45,6 @@ func mkCabooseCmd() *cobra.Command {
 				})
 				if err != nil {
 					log.Fatalf("Error in caboose: %s", err)
-
 				}
 			},
 		}
