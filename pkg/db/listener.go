@@ -7,6 +7,7 @@ import (
 	"log"
 	"strings"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 )
 
@@ -15,8 +16,43 @@ type Notifiable interface {
 	Notify(msg string)
 }
 
+func listen(ctx context.Context, conn *pgx.Conn, notifMap map[string]Notifiable) {
+	defer conn.Close(ctx)
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		default:
+		}
+
+		notification, err := conn.WaitForNotification(ctx)
+		if err != nil {
+			log.Printf("error while waiting for pg notification: %s", err)
+			if conn.IsClosed() {
+				// any fatal errors will close the connection per
+				// https://github.com/jackc/pgx/blob/8fb309c6317483733c783e9f9a4ac09cb8271849/pgconn/pgconn.go#L515
+				return
+			}
+			continue
+		}
+
+		notifiable, ok := notifMap[notification.Channel]
+		if !ok {
+			log.Printf("notification received for unknown channel '%s'", notification.Channel)
+			continue
+		}
+
+		notifiable.Notify(notification.Payload)
+	}
+}
+
 func Listen(ctx context.Context, config *ConnectConfig, notifiables []Notifiable) error {
 	listening := false
+
+	if len(notifiables) == 0 {
+		return fmt.Errorf("not listening: nothing to listen to")
+	}
 
 	conn, err := config.Connect(ctx)
 	if err != nil {
@@ -28,11 +64,11 @@ func Listen(ctx context.Context, config *ConnectConfig, notifiables []Notifiable
 		}
 	}()
 
-	lookup := map[string]Notifiable{}
+	notifMap := map[string]Notifiable{}
 	sqlStmts := []string{}
 	for _, notifiable := range notifiables {
 		name := notifiable.GetName()
-		lookup[name] = notifiable
+		notifMap[name] = notifiable
 		sqlStmts = append(sqlStmts, fmt.Sprintf(`LISTEN "%s";`, name))
 	}
 
@@ -46,32 +82,7 @@ func Listen(ctx context.Context, config *ConnectConfig, notifiables []Notifiable
 		return err
 	}
 
-	listen := func() {
-		defer conn.Close(ctx)
-		for {
-			notification, err := conn.WaitForNotification(ctx)
-			if err != nil {
-				log.Printf("error while waiting for pg notification: %s", err)
-				if conn.IsClosed() {
-					// any fatal errors will close the connection per
-					// https://github.com/jackc/pgx/blob/8fb309c6317483733c783e9f9a4ac09cb8271849/pgconn/pgconn.go#L515
-					return
-				}
-				//time.Sleep(1 * time.Second)
-				continue
-			}
-
-			notifiable, ok := lookup[notification.Channel]
-			if !ok {
-				log.Printf("notification received for unknown channel '%s'", notification.Channel)
-				continue
-			}
-
-			notifiable.Notify(notification.Payload)
-		}
-	}
-
-	go listen()
+	go listen(ctx, conn, notifMap)
 	listening = true
 
 	return nil
