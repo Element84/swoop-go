@@ -97,3 +97,16 @@ func TestListener(t *testing.T) {
 		)
 	}
 }
+
+func TestListenerNoHandlers(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	expected := "not listening: nothing to listen to"
+	err := Listen(ctx, &ConnectConfig{}, []Notifiable{})
+	if err == nil {
+		t.Fatal("should have thrown error for no notifiables")
+	} else if err.Error() != expected {
+		t.Fatalf("unexpected error: '%s'; wanted: '%s'", err, expected)
+	}
+}
