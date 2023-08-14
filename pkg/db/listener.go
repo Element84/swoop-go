@@ -13,7 +13,7 @@ import (
 
 type Notifiable interface {
 	GetName() string
-	Notify(msg string)
+	Notify()
 }
 
 func listen(ctx context.Context, conn *pgx.Conn, notifMap map[string]Notifiable) {
@@ -43,11 +43,11 @@ func listen(ctx context.Context, conn *pgx.Conn, notifMap map[string]Notifiable)
 			continue
 		}
 
-		notifiable.Notify(notification.Payload)
+		notifiable.Notify()
 	}
 }
 
-func Listen(ctx context.Context, config *ConnectConfig, notifiables []Notifiable) error {
+func Listen[T Notifiable](ctx context.Context, config *ConnectConfig, notifiables []T) error {
 	listening := false
 
 	if len(notifiables) == 0 {

@@ -18,8 +18,8 @@ func (t *TestHandler) GetName() string {
 	return t.name
 }
 
-func (t *TestHandler) Notify(msg string) {
-	t.channel <- msg
+func (t *TestHandler) Notify() {
+	t.channel <- t.name
 }
 
 func TestListener(t *testing.T) {
@@ -53,10 +53,10 @@ func TestListener(t *testing.T) {
 		}
 	}
 
-	handlers := []Notifiable{
-		&TestHandler{name: "h1", channel: notifications},
-		&TestHandler{name: "h2", channel: notifications},
-		&TestHandler{name: "h3", channel: notifications},
+	handlers := []*TestHandler{
+		{name: "h1", channel: notifications},
+		{name: "h2", channel: notifications},
+		{name: "h3", channel: notifications},
 	}
 
 	err = Listen(ctx, dbconf, handlers)
