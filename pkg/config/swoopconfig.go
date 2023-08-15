@@ -11,7 +11,8 @@ type Workflow struct {
 }
 
 type Conductor struct {
-	Handlers []string `yaml:"handlers,omitempty"`
+	HandlerNames []string   `yaml:"handlers,omitempty"`
+	Handlers     []*Handler `yaml:"-"`
 }
 
 type SwoopConfig struct {
@@ -21,6 +22,28 @@ type SwoopConfig struct {
 }
 
 func (sc *SwoopConfig) LinkAndValidate() error {
+	// TODO: break this func down into sub-functions
+	// TODO: testing
+	for handlerName, handler := range sc.Handlers {
+		handler.Name = handlerName
+	}
+
+	for conductorName, conductor := range sc.Conductors {
+		conductor.Handlers = make([]*Handler, 0, len(conductor.HandlerNames))
+
+		for _, handlerName := range conductor.HandlerNames {
+			handler, ok := sc.Handlers[handlerName]
+			if !ok {
+				return fmt.Errorf(
+					"cannot resolve handler '%s' for conductor '%s'",
+					handlerName,
+					conductorName,
+				)
+			}
+			conductor.Handlers = append(conductor.Handlers, handler)
+		}
+	}
+
 	for wfName, wf := range sc.Workflows {
 		for cbName, cb := range wf.Callbacks {
 			var (
