@@ -8,6 +8,7 @@ import (
 )
 
 type Handler struct {
+	Name        string             `yaml:"-"`
 	Type        string             `yaml:"type,omitempty"`
 	Url         string             `yaml:"url,omitempty"`
 	RequestBody string             `yaml:"requestBody,omitempty"`
