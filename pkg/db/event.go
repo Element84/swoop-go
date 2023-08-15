@@ -6,6 +6,7 @@ import (
 
 	"github.com/gofrs/uuid/v5"
 
+	scontext "github.com/element84/swoop-go/pkg/context"
 	"github.com/element84/swoop-go/pkg/states"
 )
 
@@ -40,12 +41,18 @@ func (s *Event) Insert(ctx context.Context, conn Conn) error {
 		}
 	*/
 	var (
-		err error
+		err          error
 		retrySeconds *int
+		appName      *string
 	)
 
 	if s.RetrySeconds != 0 {
 		retrySeconds = &s.RetrySeconds
+	}
+
+	app, _err := scontext.GetApplicationName(ctx)
+	if _err == nil {
+		appName = &app
 	}
 
 	if s.Time.IsZero() {
@@ -64,12 +71,13 @@ func (s *Event) Insert(ctx context.Context, conn Conn) error {
 				$2,
 				$3,
 				$4,
-				'swoop-caboose'
+				$5
 			) ON CONFLICT DO NOTHING`,
 			s.ActionUuid,
 			s.Status,
 			s.ErrorMsg,
 			retrySeconds,
+			appName,
 		)
 	} else {
 		_, err = conn.Exec(
@@ -87,14 +95,14 @@ func (s *Event) Insert(ctx context.Context, conn Conn) error {
 				$3,
 				$4,
 				$5,
-				'swoop-caboose'
-				$4,
+				$6
 			) ON CONFLICT DO NOTHING`,
 			s.ActionUuid,
 			s.Time,
 			s.Status,
 			s.ErrorMsg,
 			retrySeconds,
+			appName,
 		)
 	}
 	return err
