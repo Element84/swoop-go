@@ -10,10 +10,11 @@ import (
 )
 
 type Event struct {
-	ActionUuid uuid.UUID
-	Time       time.Time
+	ActionUuid   uuid.UUID
+	Time         time.Time
 	Status       states.ActionState
-	ErrorMsg   string
+	ErrorMsg     string
+	RetrySeconds int
 }
 
 func (s *Event) Insert(ctx context.Context, conn Conn) error {
@@ -38,7 +39,14 @@ func (s *Event) Insert(ctx context.Context, conn Conn) error {
 			return nil, fmt.Errorf("Cannot insert event, unknown action UUID: '%s'", s.actionUUID)
 		}
 	*/
-	var err error
+	var (
+		err error
+		retrySeconds *int
+	)
+
+	if s.RetrySeconds != 0 {
+		retrySeconds = &s.RetrySeconds
+	}
 
 	if s.Time.IsZero() {
 		_, err = conn.Exec(
@@ -48,17 +56,20 @@ func (s *Event) Insert(ctx context.Context, conn Conn) error {
 				action_uuid,
 				status,
 				error,
+				retry_seconds,
 				event_source
 			) VALUES (
 				now(),
 				$1,
 				$2,
 				$3,
+				$4,
 				'swoop-caboose'
 			) ON CONFLICT DO NOTHING`,
 			s.ActionUuid,
 			s.Status,
 			s.ErrorMsg,
+			retrySeconds,
 		)
 	} else {
 		_, err = conn.Exec(
@@ -68,18 +79,22 @@ func (s *Event) Insert(ctx context.Context, conn Conn) error {
 				event_time,
 				status,
 				error,
+				retry_seconds,
 				event_source
 			) VALUES (
 				$1,
 				$2,
 				$3,
 				$4,
+				$5,
 				'swoop-caboose'
+				$4,
 			) ON CONFLICT DO NOTHING`,
 			s.ActionUuid,
 			s.Time,
 			s.Status,
 			s.ErrorMsg,
+			retrySeconds,
 		)
 	}
 	return err
