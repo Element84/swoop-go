@@ -5,31 +5,63 @@ import (
 	"strings"
 )
 
-type WorkflowState string
+type ActionState string
 
 const (
-	Running    WorkflowState = "RUNNING"
-	Successful WorkflowState = "SUCCESSFUL"
-	Failed     WorkflowState = "FAILED"
-	Canceled   WorkflowState = "CANCELED"
-	TimedOut   WorkflowState = "TIMED_OUT"
-	Invalid    WorkflowState = "INVALID"
+	Pending          ActionState = "PENDING"
+	Queued           ActionState = "QUEUED"
+	Running          ActionState = "RUNNING"
+	Successful       ActionState = "SUCCESSFUL"
+	Failed           ActionState = "FAILED"
+	Canceled         ActionState = "CANCELED"
+	TimedOut         ActionState = "TIMED_OUT"
+	Backoff          ActionState = "BACKOFF"
+	Invalid          ActionState = "INVALID"
+	RetriesExhausted ActionState = "RETRIES_EXHAUSTED"
+	Info             ActionState = "INFO"
 )
 
-var WorkflowStates = map[WorkflowState]struct{}{
-	Running:    {},
+var ActionStates = map[ActionState]struct{}{
+	Pending: {},
+	Queued: {},
+	Running: {},
 	Successful: {},
-	Failed:     {},
-	Canceled:   {},
-	TimedOut:   {},
-	Invalid:    {},
+	Failed: {},
+	Canceled: {},
+	TimedOut: {},
+	Backoff: {},
+	Invalid: {},
+	RetriesExhausted: {},
+	Info: {},
 }
 
-func (fs WorkflowState) String() string {
+func (fs ActionState) String() string {
 	return string(fs)
 }
 
-func Parse(s string) (WorkflowState, error) {
+func Parse(s string) (ActionState, error) {
+	ws := ActionState(strings.ToUpper(s))
+
+	_, ok := ActionStates[ws]
+	if !ok {
+		return "", fmt.Errorf("unknown action state: '%s'", s)
+	}
+
+	return ws, nil
+}
+
+type WorkflowState ActionState
+
+var WorkflowStates = map[WorkflowState]struct{}{
+	WorkflowState(Running):    {},
+	WorkflowState(Successful): {},
+	WorkflowState(Failed):     {},
+	WorkflowState(Canceled):   {},
+	WorkflowState(TimedOut):   {},
+	WorkflowState(Invalid):    {},
+}
+
+func ParseWorkflowState(s string) (WorkflowState, error) {
 	ws := WorkflowState(strings.ToUpper(s))
 
 	_, ok := WorkflowStates[ws]
@@ -40,7 +72,7 @@ func Parse(s string) (WorkflowState, error) {
 	return ws, nil
 }
 
-type FinalState WorkflowState
+type FinalState ActionState
 
 var FinalStates = map[FinalState]struct{}{
 	FinalState(Successful): {},

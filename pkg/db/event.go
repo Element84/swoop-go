@@ -12,7 +12,7 @@ import (
 type Event struct {
 	ActionUuid uuid.UUID
 	Time       time.Time
-	Status     states.WorkflowState
+	Status       states.ActionState
 	ErrorMsg   string
 }
 
