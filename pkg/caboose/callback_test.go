@@ -20,7 +20,7 @@ func TestCallbacks(t *testing.T) {
 	status, _ := states.Parse("successful")
 	wfProps := &WorkflowProperties{
 		Uuid:   uuid.Must(uuid.FromString("f44bb102-a200-4506-bdfb-6a238c33b22d")),
-		Status: states.Successful,
+		Status: states.WorkflowState(states.Successful),
 	}
 
 	conf := config.LoadConfigFixture(t)

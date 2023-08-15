@@ -188,7 +188,7 @@ func (cbx *CallbackExecutor) ProcessCallbacks(cbs Callbacks, wfProps *WorkflowPr
 	}
 
 	output := map[string]any{}
-	if wfProps.Status == states.Successful {
+	if states.ActionState(wfProps.Status) == states.Successful {
 		_output, err := cbx.s3.GetOutput(cbx.ctx, wfProps.Uuid)
 		if err != nil {
 			// TODO: seems like we need to handle obviously-not-retryable

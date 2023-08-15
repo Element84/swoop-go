@@ -58,12 +58,12 @@ func indexFn(obj any) ([]string, error) {
 
 func statusFromPhase(phase string) (states.WorkflowState, error) {
 	if phase == "Succeeded" {
-		return states.Successful, nil
+		return states.WorkflowState(states.Successful), nil
 	} else if phase == "Error" {
-		return states.Failed, nil
+		return states.WorkflowState(states.Failed), nil
 	}
 
-	return states.Parse(phase)
+	return states.ParseWorkflowState(phase)
 }
 
 type wfEventType int

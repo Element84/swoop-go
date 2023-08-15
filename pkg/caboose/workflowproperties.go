@@ -32,7 +32,7 @@ func (p *WorkflowProperties) ToEndEvent() *db.Event {
 	return &db.Event{
 		ActionUuid: p.Uuid,
 		Time:       p.FinishedAt,
-		Status:     p.Status,
+		Status:     states.ActionState(p.Status),
 		ErrorMsg:   p.ErrorMsg,
 	}
 }
