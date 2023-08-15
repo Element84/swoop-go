@@ -37,12 +37,15 @@ func mkCabooseCmd() *cobra.Command {
 				if err != nil {
 					log.Fatal(err)
 				}
-				err = cmdutil.Run(&argo.ArgoCaboose{
-					S3Driver:       s3Driver,
-					SwoopConfig:    sc,
-					K8sConfigFlags: configFlags,
-					DbConfig:       &db.PoolConfig{},
-				})
+				err = cmdutil.Run(
+					"swoop-caboose",
+					&argo.ArgoCaboose{
+						S3Driver:       s3Driver,
+						SwoopConfig:    sc,
+						K8sConfigFlags: configFlags,
+						DbConfig:       &db.PoolConfig{},
+					},
+				)
 				if err != nil {
 					log.Fatalf("Error in caboose: %s", err)
 				}

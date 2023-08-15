@@ -5,6 +5,8 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+
+	scontext "github.com/element84/swoop-go/pkg/context"
 )
 
 type CliHandler interface {
@@ -16,8 +18,8 @@ type CliHandler interface {
 	Run(ctx context.Context, cancel context.CancelFunc) error
 }
 
-func Run(c CliHandler) error {
-	ctx := context.Background()
+func Run(appName string, c CliHandler) error {
+	ctx := scontext.NewApplicationContext(appName)
 	ctx, cancel := context.WithCancel(ctx)
 
 	signalChan := make(chan os.Signal, 1)
