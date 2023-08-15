@@ -37,6 +37,7 @@ func TestCallbacks(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to get db connection: %s", err)
 	}
+	defer db.Close(ctx)
 
 	cbx := NewCallbackExecutor(ctx, s3.NewSwoopS3(t3.JsonClient), db)
 
