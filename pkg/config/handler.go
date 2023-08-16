@@ -2,7 +2,7 @@ package config
 
 type Handler struct {
 	Name        string             `yaml:"-"`
-	Type        string             `yaml:"type,omitempty"`
+	Type        HandlerType        `yaml:"type"`
 	Url         string             `yaml:"url,omitempty"`
 	RequestBody string             `yaml:"requestBody,omitempty"`
 	Operation   string             `yaml:"operation,omitempty"`
