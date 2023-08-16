@@ -94,13 +94,13 @@ func (cbx *CallbackExecutor) extractParams(
 func (cbx *CallbackExecutor) insertCallback(
 	name string,
 	handlerName string,
-	handlerType string,
+	handlerType config.HandlerType,
 	wfUuid uuid.UUID,
 ) (uuid.UUID, error) {
 	cbUuid, err := db.NewCallbackAction(
 		name,
 		handlerName,
-		handlerType,
+		handlerType.String(),
 		wfUuid,
 	).Insert(cbx.ctx, cbx.conn)
 
@@ -134,7 +134,7 @@ func (cbx *CallbackExecutor) failCallback(cbUuid uuid.UUID, err error) error {
 func (cbx *CallbackExecutor) insertAndFailCallback(
 	name string,
 	handlerName string,
-	handlerType string,
+	handlerType config.HandlerType,
 	wfUuid uuid.UUID,
 	err error,
 ) error {
