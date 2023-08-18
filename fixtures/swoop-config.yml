@@ -1,12 +1,11 @@
 handlers:
   argoHandler:
-    type: argoWorkflowHandler
-    #serverUrl: https://kubernetes:6443
-    #token: {secrets.argo_token}
+    type: argoWorkflows
 
   cirrusHandler:
-    type: cirrusWorkflowHandler
-    #sqsUrl: https://sqs.aws.com/0142354653636::sqs::queue
+    type: cirrus
+    cirrusConf:
+      sqsUrl: https://sqs.aws.com/0142354653636::sqs::queue
 
   noopHandler:
     type: noop
@@ -18,15 +17,18 @@ handlers:
   # We believe it is best to re-template the request
   # (at least with regard to secrets) JIT for every request execution
   publishS3Handler:
-    type: httpHandler
-    url: https://{secrets.minio-user}:{secrets.minio-password}@our-minio:9000
-    requestBody: |
-      {
-        "fixed": "a_value",
-        "name": "{{ .parameters.workflowName -}}",
-        "date": "{{ .parameters.feature.properties.datetime -}}"
-      }
-    operation: POST
+    type: http
+    backoff:
+      retries: 10
+      seconds: 5
+      factor: 2
+      max: 25
+    parameters:
+      workflowName:
+        type: string
+        default: a_value
+      feature:
+        type: object
     secrets:
       # simplest approach for secret renewal is to have a ttl
       # and periodically re-resolve the secret values, but does mean
@@ -39,33 +41,35 @@ handlers:
         type: file
         path: /secrets-mount/username-secret
         ttl: 1200
-    headers:
-      Authorization: "Basic {{ .secrets.user }} {{ .secrets.password}}"
-      Content-Type: "application/json"
-      X-Workflow-Name: "{{ .parameters.workflowName }}"
-    backoff:
-      retries: 10
-      seconds: 5
-      factor: 2
-      max: 25
-    errors:
-      - status: 400
-        retryable: false
-      - status: 400
-        message: ".*timed out.*"
-        retryable: true
-    parameters:
-      workflowName:
-        type: string
-        default: a_value
-      feature:
-        type: object
+    request:
+      url: https://{secrets.minio-user}:{secrets.minio-password}@our-minio:9000
+      method: POST
+      body: |
+        {
+          "fixed": "a_value",
+          "name": "{{ .parameters.workflowName -}}",
+          "date": "{{ .parameters.feature.properties.datetime -}}"
+        }
+      headers:
+        Authorization: "Basic {{ .secrets.user }} {{ .secrets.password}}"
+        Content-Type: "application/json"
+        X-Workflow-Name: "{{ .parameters.workflowName }}"
+      followRedirects: true
+      responses:
+        # first matched wins
+        # by default any 2xx is success and anything else will be retried
+        - status: 400
+          message: ".*timed out.*"
+          fatal: false
+        - status: 400
+          fatal: true
 
 conductors:
   instance-a:
     handlers:
       - argoHandler
       - publishS3Handler
+  instance-b: {}
 
 callbacks:
   publishS3Push: &callbacksPublishS3Push
