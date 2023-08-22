@@ -30,6 +30,7 @@ func (rc *ResponseChecker) Check(response *http.Response) bool {
 	return false
 }
 
+// IDEA: should we support fetching values from the env for use templating?
 type HttpRequest struct {
 	Url    *template.UrlTemplate `yaml:"url"`
 	Method HttpMethod            `yaml:"method"`
