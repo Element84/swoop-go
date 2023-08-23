@@ -40,7 +40,9 @@ jobs:
         env:
           SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
         with:
-          args: --severity-threshold=high # Forces fail on high-severity vulnerabilities
+          args:
+            --policy-path=.snyk
+            --severity-threshold=high # Forces fail on high-severity vulnerabilities
 
       - name: Snyk Docker report vulnerabilities
         uses: snyk/actions/docker@master
@@ -53,7 +55,7 @@ jobs:
             --file=Dockerfile
             --sarif-file-output=snyk.sarif
             --policy-path=.snyk
-            --severity-threshold=critical # Forces fail on critical-severity vulnerabilities
+            --severity-threshold=high # Forces fail on high-severity vulnerabilities
 
         # Push the Snyk Code results into GitHub Code Scanning tab
       - name: Upload docker scan result to GitHub Code Scanning
