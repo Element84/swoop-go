@@ -1,5 +1,5 @@
 # build swoop-go source and dependencies
-FROM golang:1.20-bookworm as APP
+FROM golang:1.21-bookworm as APP
 
 WORKDIR /opt/swoop-go
 
@@ -8,7 +8,7 @@ COPY . /opt/swoop-go
 # Build swoop
 RUN go build -o swoop
 
-FROM golang:1.20-bookworm
+FROM golang:1.21-bookworm
 
 WORKDIR /opt/swoop-go
 

@@ -1,6 +1,6 @@
 module github.com/element84/swoop-go
 
-go 1.20
+go 1.21
 
 require (
 	github.com/argoproj/argo-workflows/v3 v3.4.7
