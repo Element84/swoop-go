@@ -1,6 +1,13 @@
 handlers:
   argoHandler:
     type: argoWorkflows
+    argoConf:
+      k8sOptions:
+        # relative paths must be relative to cwd of process when it runs
+        kubeconfig: ./kubeconfig.yaml
+        configOverrides:
+          context:
+            namespace: swoop-test-conductor-e2e
 
   cirrusHandler:
     type: cirrus
@@ -90,7 +97,8 @@ workflows:
     description: "A workflow to copy STAC items into a local mirror"
     version: 2
     handler: argoHandler
-    argoTemplate: workflowtemplate/mirror-workflow
+    argoOpts:
+      template: workflowtemplate/mirror-workflow
     cacheKeyHashIncludes:
       - .features[].id
       - .features[].collection
@@ -117,7 +125,8 @@ workflows:
     description: "An example workflow config for a cirrus workflow"
     version: 1
     handler: cirrusHandler
-    sfnArn: arn:aws:states:us-west-2:09876543210:stateMachine:cirrus-example
+    cirrusOpts:
+      sfnArn: arn:aws:states:us-west-2:09876543210:stateMachine:cirrus-example
     cacheKeyHashIncludes:
       - .features[].id
       - .features[].collection

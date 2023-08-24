@@ -11,7 +11,9 @@ import (
 
 type Thread struct {
 	Uuid        uuid.UUID
+	WorkflowId  string
 	HandlerName string
+	Priority    int
 	LockId      int
 }
 
@@ -24,16 +26,20 @@ func GetProcessableThreads(
 ) ([]*Thread, error) {
 	rows, _ := conn.Query(
 		ctx,
+		// TODO: review db schema to see if this is using indexes effectively
 		`SELECT
+		    a.action_name as workflowid,
 			t.action_uuid as uuid,
 			t.handler_name as handlername,
+			t.priority as priority,
 			t.lock_id as lockid
 		FROM swoop.get_processable_actions(
 			_ignored_action_uuids => $1,
 			_handler_names => $2,
 			_limit => $3
 		) as pas
-		JOIN swoop.thread as t using (action_uuid)`,
+		JOIN swoop.thread as t using (action_uuid)
+		JOIN swoop.action as a using (action_uuid)`,
 		ignored,
 		[]string{handlerName},
 		limit,
