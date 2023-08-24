@@ -19,6 +19,7 @@ export KUBECONFIG="${ROOT}/kubeconfig.yaml"
 FIXTURES="${ROOT}/fixtures"
 PAYLOADS="${FIXTURES}/payloads"
 RESOURCES="${FIXTURES}/resource"
+TEMPLATES="${FIXTURES}/workflow-templates"
 
 CONFIG="${FIXTURES}/swoop-config.yml"
 
@@ -80,13 +81,11 @@ mktestdb() {
 
 rmtestdb() {
     swoop_db drop 1>&3 2>&3
-
 }
 
 
 mktestbucket() {
     aws s3api create-bucket --bucket "${TESTNAME}" 1>&3 2>&3
-
 }
 
 
@@ -98,7 +97,7 @@ rmtestbucket() {
 
 mktestns() {
     KUBECONFIG="${KUBECONFIG}" kubectl create namespace "${TESTNAME}" 1>&3 2>&3
-
+    apply_workflow_templates
 }
 
 
@@ -106,7 +105,6 @@ rmtestns() {
     # note that running this script in quick succession will
     # fail because the namespace will still be deleting
     KUBECONFIG="${KUBECONFIG}" kubectl delete namespace "${TESTNAME}" --wait="false" 1>&3 2>&3
-
 }
 
 
@@ -133,7 +131,8 @@ run_swoop_cmd() {
 
 # testing helpers
 insert_action() {
-    local uuid="${1?"must provide an action_uuid"}"
+    local uuid="${1:?"must provide an action_uuid"}"
+    local action_name="${2:?"must provide an action_name"}"
     psql <<EOF
         insert into swoop.action (
             action_uuid,
@@ -148,7 +147,7 @@ insert_action() {
             '${uuid}',
             '2023-03-31'::timestamp,
             'workflow',
-            'mirror',
+            '${action_name}',
             'argoHandler',
             'argoWorkflow',
             'ade69fe7-1d7d-572e-9f36-7242cc2aca77',
@@ -173,14 +172,12 @@ get_callback_uuid() {
 stage_action_input() {
     local uuid="${1?"must provide an action_uuid"}"
     aws s3 cp "${PAYLOADS}/input.json" "s3://${TESTNAME}/executions/${uuid}/input.json" 1>&3 2>&3
-
 }
 
 
 stage_action_output() {
     local uuid="${1?"must provide an action_uuid"}"
     aws s3 cp "${PAYLOADS}/output.json" "s3://${TESTNAME}/executions/${uuid}/output.json" 1>&3 2>&3
-
 }
 
 
@@ -190,11 +187,16 @@ has_callback_params() {
 }
 
 
+apply_workflow_templates() {
+    KUBECONFIG="${KUBECONFIG}" kubectl -n "${TESTNAME}" apply -Rf "${TEMPLATES}" 1>&3 2>&3
+}
+
+
 apply_workflow_resource() {
     local uuid="${1?"must provide an action_uuid"}"
     local state="${2?"must provide workflow state (init, started, successful, failed)"}"
-    <"${RESOURCES}/${state}.json" sed "s/\${UUID}/${uuid}/" | kubectl -n "${TESTNAME}" apply -f - 1>&3 2>&3
-
+    <"${RESOURCES}/${state}.json" sed "s/\${UUID}/${uuid}/" \
+        | KUBECONFIG="${KUBECONFIG}" kubectl -n "${TESTNAME}" apply -f - 1>&3 2>&3
 }
 
 is_resource_in_cluster() {

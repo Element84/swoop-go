@@ -4,10 +4,10 @@ set -euo pipefail
 
 RUN_CLEANUP="true"
 VERBOSE="false"
-CABOOSE_START_TIME_SECS=2
-CABOOSE_TIME_LIMIT_SECS=4
+CONDUCTOR_START_TIME_SECS=2
+CONDUCTOR_TIME_LIMIT_SECS=4
 
-TESTNAME="swoop-test-caboose-e2e"
+TESTNAME="swoop-test-conductor-e2e"
 
 # output controls
 if [ "${VERBOSE}" == "true" ]; then
@@ -35,69 +35,52 @@ LIB="${THIS_DIR}/test-lib.bash"
 . "${LIB}"
 
 
-caboose() {
+conductor() {
     run_swoop_cmd \
-        $((CABOOSE_TIME_LIMIT_SECS+CABOOSE_START_TIME_SECS)) \
-        caboose argo -f "${CONFIG}" --namespace ${TESTNAME}
+        $((CONDUCTOR_TIME_LIMIT_SECS+CONDUCTOR_START_TIME_SECS)) \
+        conductor run instance-a -f "${CONFIG}"
 }
 
 
 main() {
-    CLEANUP=( "rmtestdb" "rmtestbucket" "rmtestns")
+    CLEANUP=( "rmtestdb" "rmtestns")
     trap cleanup EXIT
 
     # init
     mktestdb
-    mktestbucket
     mktestns
     gobuild
 
     # pre-run
     #   test cases:
-    #     1) successful before start
     uuid1='018734f6-c400-74a1-b826-f261c41f3861'
-    #     2) start before, succussful during
     uuid2='018734f6-c400-77db-a1dd-e245a0fc2c79'
-    #     3) start during, fail during
     uuid3='018734f6-c400-715f-9214-879dbe6f73c2'
-    #     4) init during only (should still be in cluster at end)
     uuid4='018734f6-c400-72e2-b908-19e188e7d0c6'
 
     insert_action "${uuid1}" mirror
-    insert_action "${uuid2}" mirror
-    insert_action "${uuid3}" mirror
-    insert_action "${uuid4}" mirror
-
-    stage_action_input "${uuid1}"
-    stage_action_input "${uuid2}"
-    stage_action_input "${uuid3}"
-
-    stage_action_output "${uuid1}"
-    stage_action_output "${uuid2}"
-
-    apply_workflow_resource "${uuid1}" successful
-    apply_workflow_resource "${uuid2}" started
 
     # run
-    caboose &
+    conductor &
     local pid=$!
 
     # give caboose a chance to start
-    sleep $((CABOOSE_START_TIME_SECS + 1))
+    sleep $((CONDUCTOR_START_TIME_SECS))
 
-    apply_workflow_resource "${uuid3}" failed
-    apply_workflow_resource "${uuid4}" init
+    insert_action "${uuid2}" mirror
     sleep 1
-    apply_workflow_resource "${uuid2}" successful
+
+    insert_action "${uuid3}" badname
+    insert_action "${uuid4}" mirror
 
     # post-run
     wait "${pid}"
 
     rc=0
-    expected1="SUCCESSFUL"
-    expected2="SUCCESSFUL"
+    expected1="QUEUED"
+    expected2="QUEUED"
     expected3="FAILED"
-    expected4="PENDING"
+    expected4="QUEUED"
     status1="$(check_action_status "${uuid1}")"
     status2="$(check_action_status "${uuid2}")"
     status3="$(check_action_status "${uuid3}")"
@@ -120,39 +103,16 @@ main() {
         rc=1
     }
 
-    callback1="$(get_callback_uuid "${uuid1}")"
-    callback2="$(get_callback_uuid "${uuid2}")"
-    callback3="$(get_callback_uuid "${uuid3}")"
-    callback4="$(get_callback_uuid "${uuid4}")"
-
-    has_callback_params "${callback1}" || {
-        echo2 "FAILED: Action 1 callback parameters not found; uuid: '${callback1}'"
+    is_resource_in_cluster "${uuid1}" || {
+        echo2 "FAILED: Action 1 resource not found in cluster"
         rc=1
     }
-    has_callback_params "${callback2}" || {
-        echo2 "FAILED: Action 2 callback parameters not found; uuid: '${callback2}'"
-        rc=1
-    }
-    has_callback_params "${callback3}" || {
-        echo2 "FAILED: Action 3 callback parameters not found; uuid: '${callback3}'"
-        rc=1
-    }
-
-    [ "${callback4}" == "" ] || {
-        echo2 "FAILED: Action 4 should not have a callback; uuid: '${callback4}'"
-        rc=1
-    }
-
-    ! is_resource_in_cluster "${uuid1}" || {
-        echo2 "FAILED: Action 1 resource not deleted from cluster"
-        rc=1
-    }
-    ! is_resource_in_cluster "${uuid2}" || {
-        echo2 "FAILED: Action 2 resource not deleted from cluster"
+    is_resource_in_cluster "${uuid2}" || {
+        echo2 "FAILED: Action 2 resource not found in cluster"
         rc=1
     }
     ! is_resource_in_cluster "${uuid3}" || {
-        echo2 "FAILED: Action 3 resource not deleted from cluster"
+        echo2 "FAILED: Action 3 resource found in cluster but should not exist"
         rc=1
     }
 

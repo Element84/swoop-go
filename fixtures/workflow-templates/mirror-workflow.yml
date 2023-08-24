@@ -1,0 +1,16 @@
+apiVersion: argoproj.io/v1alpha1
+kind: WorkflowTemplate
+metadata:
+  # name is required; we should never have an execution with this name
+  name: mirror-workflow
+  labels:
+    workflow-name: mirror-workflow
+spec:
+  serviceAccountName: argo-workflow # set this so the proper permissions are assigned
+  entrypoint: whalesay
+  templates:
+    - name: whalesay
+      container:
+        image: docker/whalesay
+        command: [ cowsay ]
+        args: [ "hello world" ]
