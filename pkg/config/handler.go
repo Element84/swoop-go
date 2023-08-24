@@ -1,5 +1,22 @@
 package config
 
+type Handlers map[string]*Handler
+
+func (hs *Handlers) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	type p Handlers
+
+	err := unmarshal((*p)(hs))
+	if err != nil {
+		return err
+	}
+
+	for hName, h := range *hs {
+		h.Name = hName
+	}
+
+	return nil
+}
+
 // TODO: how does this even work?
 //
 //	I think we need another type to actually fetch/retrive the value?
@@ -21,10 +38,10 @@ type Handler struct {
 	Backoff    map[string]int     `yaml:"backoff"`
 	Parameters *HandlerParameters `yaml:"parameters"`
 	Secrets    []*HandlerSecret   `yaml:"secrets"`
+	Workflows  []*Workflow        `yaml:"-"`
 
-	HttpRequestConf *HttpRequest `yaml:"request"`
-	// TODO: k8s options
-	// just kubeconfig path for now?
+	HttpRequestConf *HttpRequest `yaml:"request,omitempty"`
+	ArgoConf        *ArgoConf    `yaml:"argoConf,omitempty"`
 
 	// TODO: cirrus options
 	// not sure how this is going to work yet, just make a placeholder
