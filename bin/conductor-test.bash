@@ -38,7 +38,7 @@ LIB="${THIS_DIR}/test-lib.bash"
 conductor() {
     run_swoop_cmd \
         $((CONDUCTOR_TIME_LIMIT_SECS+CONDUCTOR_START_TIME_SECS)) \
-        conductor run instance-a -f "${CONFIG}"
+        conductor run -n instance-a -f "${CONFIG}"
 }
 
 

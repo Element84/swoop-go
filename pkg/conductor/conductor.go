@@ -8,6 +8,9 @@ import (
 	"sync"
 	"syscall"
 
+	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
+
 	"github.com/element84/swoop-go/pkg/config"
 	"github.com/element84/swoop-go/pkg/db"
 	"github.com/element84/swoop-go/pkg/s3"
@@ -18,6 +21,17 @@ type PgConductor struct {
 	S3Driver     *s3.S3Driver
 	SwoopConfig  *config.SwoopConfig
 	DbConfig     *db.ConnectConfig
+}
+
+func (c *PgConductor) AddFlags(fs *pflag.FlagSet) {
+	fs.StringVarP(
+		&c.InstanceName,
+		"conductor-instance",
+		"n",
+		"",
+		"conductor instance name (required; SWOOP_CONDUCTOR_INSTANCE)",
+	)
+	cobra.MarkFlagRequired(fs, "conductor-instance")
 }
 
 func (c *PgConductor) Run(ctx context.Context, cancel context.CancelFunc) error {

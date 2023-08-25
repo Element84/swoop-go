@@ -27,29 +27,31 @@ func mkConductorCmd() *cobra.Command {
 	conf.AddFlags(cmd.PersistentFlags())
 
 	cmd.AddCommand(func() *cobra.Command {
+		pgConductor := &conductor.PgConductor{
+			S3Driver: s3Driver,
+			DbConfig: &db.ConnectConfig{},
+		}
+
 		cmd := &cobra.Command{
-			Use:   "run [instance name]",
+			Use:   "run",
 			Short: "Run the conductor service to handle actions via pg notifications",
-			Args:  cobra.MatchAll(cobra.ExactArgs(1), cobra.OnlyValidArgs),
 			Run: func(cmd *cobra.Command, args []string) {
 				sc, err := conf.Parse()
 				if err != nil {
 					log.Fatal(err)
 				}
+				pgConductor.SwoopConfig = sc
 				err = cmdutil.Run(
 					"swoop-conductor",
-					&conductor.PgConductor{
-						InstanceName: args[0],
-						S3Driver:     s3Driver,
-						SwoopConfig:  sc,
-						DbConfig:     &db.ConnectConfig{},
-					},
+					pgConductor,
 				)
 				if err != nil {
 					log.Fatalf("Error in conductor: %s", err)
 				}
 			},
 		}
+
+		pgConductor.AddFlags(cmd.Flags())
 		return cmd
 	}())
 
