@@ -264,11 +264,10 @@ func (h *Handler) Start(ctx context.Context, dbConf *db.ConnectConfig) error {
 	h.NotifyNow()
 
 	conn, err := dbConf.Connect(ctx)
-	defer conn.Close(ctx)
-
 	if err != nil {
 		return err
 	}
+	defer conn.Close(ctx)
 
 	go h.poller(ctx)
 
