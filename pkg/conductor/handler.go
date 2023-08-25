@@ -59,6 +59,11 @@ func HandleActionWrapper(
 		return thread.InsertFailedEvent(ctx, conn, _err.Error())
 	}
 
+	// TODO: we need some way to know if the error is terminal or retryable
+	//   -> this is an aspect of the handler, which is not in scope here
+	//      -> maybe we need to pass the error handling to the client, where applicable
+	//   -> are errors and how to handle them client specific?
+	//   -> depending on terminal or retryable we need to do different things in the db
 	err = handleFn()
 	if err != nil {
 		_err := handleError(err)
