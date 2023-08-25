@@ -99,6 +99,10 @@ func NewArgoClient(ctx context.Context, ac *config.ArgoConf, wfs []*config.Workf
 		workflows[wf.Id] = awf
 	}
 
+	// TODO: we should add a check for template method to the workflow struct,
+	// then iterate through all our workflows here to validate that we have
+	// templates defined in the cluster for each of them -- allows us to fail fast
+	// if a template is missing.
 	return &ArgoClient{
 		config:        ac,
 		ctx:           ctx,
