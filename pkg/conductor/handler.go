@@ -150,6 +150,11 @@ func NewHandlerFromConfig(ctx context.Context, conf *config.Handler) (*Handler, 
 			return nil, fmt.Errorf("failed making client: %s", err)
 		}
 		client = c
+	// TODO: figure out how to wrap the http client we already have from config
+	// seems like the RequestResult type might be more generic
+	// do the client bits (everything but the structs and parsing) need to move into a package here?
+	case config.Http:
+
 	default:
 		return nil, fmt.Errorf("unsupported handler type: '%s'", conf.Type)
 	}

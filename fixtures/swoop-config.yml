@@ -65,11 +65,11 @@ handlers:
       responses:
         # first matched wins
         # by default any 2xx is success and anything else will be retried
-        - status: 400
+        - statusCode: 400
           message: ".*timed out.*"
-          fatal: false
-        - status: 400
-          fatal: true
+          result: error
+        - statusCode: 400
+          result: fatal
 
 conductors:
   instance-a:

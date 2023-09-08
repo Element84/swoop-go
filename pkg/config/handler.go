@@ -1,5 +1,9 @@
 package config
 
+import (
+	"github.com/element84/swoop-go/pkg/config/http"
+)
+
 type Handlers map[string]*Handler
 
 func (hs *Handlers) UnmarshalYAML(unmarshal func(interface{}) error) error {
@@ -39,9 +43,8 @@ type Handler struct {
 	Parameters *HandlerParameters `yaml:"parameters"`
 	Secrets    []*HandlerSecret   `yaml:"secrets"`
 	Workflows  []*Workflow        `yaml:"-"`
-
-	HttpRequestConf *HttpRequest `yaml:"request,omitempty"`
-	ArgoConf        *ArgoConf    `yaml:"argoConf,omitempty"`
+	HttpClient *http.Client       `yaml:"request,omitempty"`
+	ArgoConf   *ArgoConf          `yaml:"argoConf,omitempty"`
 
 	// TODO: cirrus options
 	// not sure how this is going to work yet, just make a placeholder
