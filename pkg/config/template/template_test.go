@@ -28,7 +28,7 @@ func Test_Template_URL(t *testing.T) {
 		t.Fatalf("error parsing yaml: %s", err)
 	}
 
-	parsed, err := s.Template.Execute(data)
+	parsed, err := s.Template.ExecuteToString(data)
 	if err != nil {
 		t.Fatalf("error templating: %s", err)
 	}

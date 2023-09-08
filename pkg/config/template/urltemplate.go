@@ -5,11 +5,11 @@ import (
 )
 
 type UrlTemplate struct {
-	Template
+	baseTemplate
 }
 
 func (t *UrlTemplate) Execute(data any) (*url.URL, error) {
-	s, err := executeTemplate(t.template, data)
+	s, err := t.executeToString(data)
 	if err != nil {
 		return nil, err
 	}
