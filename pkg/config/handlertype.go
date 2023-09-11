@@ -9,14 +9,14 @@ type HandlerType string
 
 const (
 	Noop          HandlerType = "noop"
-	Http          HandlerType = "http"
+	SyncHttp      HandlerType = "synchttp"
 	ArgoWorkflows HandlerType = "argoworkflows"
 	Cirrus        HandlerType = "cirrus"
 )
 
 var HandlerTypes = map[HandlerType]struct{}{
 	Noop:          {},
-	Http:          {},
+	SyncHttp:      {},
 	ArgoWorkflows: {},
 	Cirrus:        {},
 }

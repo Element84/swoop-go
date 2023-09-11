@@ -24,7 +24,7 @@ handlers:
   # We believe it is best to re-template the request
   # (at least with regard to secrets) JIT for every request execution
   publishS3Handler:
-    type: http
+    type: synchttp
     backoff:
       retries: 10
       seconds: 5
