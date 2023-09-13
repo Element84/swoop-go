@@ -10,8 +10,6 @@ import (
 	"github.com/element84/swoop-go/pkg/config/template"
 )
 
-// IDEA: should we support fetching values from the env for use templating?
-// YES! custom template function!
 type Client struct {
 	Url             *template.UrlTemplate         `yaml:"url"`
 	Method          HttpMethod                    `yaml:"method"`
@@ -52,13 +50,13 @@ func (s *Client) NewRequest(data any) (*http.Request, error) {
 	return req, nil
 }
 
-func (s *Client) MakeRequest(ctx context.Context, req *http.Request) (RequestResult, error) {
+func (s *Client) MakeRequest(ctx context.Context, req *http.Request) error {
 	resp, err := wrapRequest(s.client.Do(req.WithContext(ctx)))
 	if err != nil {
-		// TODO: how to differentiate between terminal and transient errors
-		return Error, err
+		// TODO: how to differentiate between terminal and transient errors in client
+		return err
 	}
-	return s.ResponseChecker.check(resp), nil
+	return s.ResponseChecker.check(resp)
 }
 
 func (s *Client) UnmarshalYAML(unmarshal func(interface{}) error) error {
@@ -88,9 +86,3 @@ func (s *Client) UnmarshalYAML(unmarshal func(interface{}) error) error {
 
 	return nil
 }
-
-/*
-1 - validation
-x2 - templating
-3 - test making request against test server
-*/

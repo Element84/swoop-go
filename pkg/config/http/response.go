@@ -48,35 +48,35 @@ type responseMatcher struct {
 	Result     RequestResult      `yaml:"result"`
 }
 
-func (rm *responseMatcher) match(resp *response) (result RequestResult, matched bool) {
+func (rm *responseMatcher) match(resp *response) (matched bool, err error) {
 	if rm.StatusCode != resp.StatusCode {
-		return "", false
+		return false, nil
 	}
 	if rm.Message != nil && !rm.Message.MatchString(resp.Body) {
-		return "", false
+		return false, nil
 	}
 	if rm.JsonPath != nil {
 		if !rm.JsonPath.Has(resp.Json) {
-			return "", false
+			return false, nil
 		}
 	}
 
-	return rm.Result, true
+	return true, rm.Result.ToError()
 }
 
 type responseChecker []*responseMatcher
 
-func (rc *responseChecker) check(resp *response) RequestResult {
+func (rc *responseChecker) check(resp *response) error {
 	for _, matcher := range *rc {
-		result, matched := matcher.match(resp)
+		matched, err := matcher.match(resp)
 		if matched {
-			return result
+			return err
 		}
 	}
 
 	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
-		return Success
+		return nil
 	}
 
-	return Error
+	return Error.ToError()
 }

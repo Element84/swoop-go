@@ -39,7 +39,7 @@ body: |
   {
     "fixed": "a_value",
     "name": "{{ .parameters.workflowName -}}",
-    "date": "{{ .parameters.feature.properties.datetime -}}"
+    "date": "{{ .parameters.executionTime -}}"
   }
 headers:
   Authorization: "Basic {{ .secrets.user }} {{ .secrets.password}}"
@@ -75,6 +75,7 @@ func Test_Client(t *testing.T) {
 		"user":          "Kafka",
 		"password":      "please!please!please!",
 	}
+	// TODO: load this via json to support nesting, then try referencing nested keys
 	parameters := map[string]any{
 		"workflowName":  "some_workflow",
 		"executionTime": "2023-04-04 04:40:04.444T00:00",
@@ -97,6 +98,7 @@ func Test_Client(t *testing.T) {
 	}
 
 	// TODO: validate request was templated correctly
+	t.Logf("%+v", req)
 
 	ts := mkTestServer(t, 0, "")
 	tsUrl, err := url.Parse(ts.Server.URL)
@@ -127,8 +129,9 @@ func Test_Client(t *testing.T) {
 				ts.StatusCode = test.respCode
 				ts.ResponseBody = test.respBody
 
-				result, err := hr.MakeRequest(ctx, req)
-				if err != nil {
+				err := hr.MakeRequest(ctx, req)
+				result, ok := RequestResultFromError(err)
+				if !ok {
 					t.Logf("%+v", err)
 					t.Fatalf("failed to make request: %s", err)
 				}

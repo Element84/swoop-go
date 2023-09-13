@@ -18,7 +18,7 @@ import (
 
 type PgConductor struct {
 	InstanceName string
-	S3Driver     *s3.S3Driver
+	S3           *s3.SwoopS3
 	SwoopConfig  *config.SwoopConfig
 	DbConfig     *db.ConnectConfig
 }
@@ -48,7 +48,7 @@ func (c *PgConductor) Run(ctx context.Context, cancel context.CancelFunc) error 
 
 	handlers := []*Handler{}
 	for _, conf := range handlerConfs {
-		handler, err := NewHandlerFromConfig(ctx, conf)
+		handler, err := c.NewHandlerFromConfig(ctx, conf)
 		if err != nil {
 			// TODO: I think this should be an error, not just logged?
 			log.Println(err)
@@ -74,7 +74,10 @@ func (c *PgConductor) Run(ctx context.Context, cancel context.CancelFunc) error 
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			handler.Start(ctx, c.DbConfig)
+			err := handler.Start(ctx, c.DbConfig)
+			if err != nil {
+				panic(err)
+			}
 		}()
 	}
 
@@ -101,4 +104,27 @@ func (c *PgConductor) SignalHandler(
 	case <-ctx.Done():
 		log.Printf("Done.")
 	}
+}
+
+func (c *PgConductor) NewHandlerFromConfig(ctx context.Context, conf *config.Handler) (*Handler, error) {
+	var client HandlerClient
+	switch conf.Type {
+	case config.ArgoWorkflows:
+		cl, err := NewArgoClient(ctx, conf.ArgoConf, conf.Workflows)
+		if err != nil {
+			return nil, fmt.Errorf("failed making argo client: %s", err)
+		}
+		client = cl
+	case config.SyncHttp:
+		client = newSyncHttpClient(conf.HttpClient, c.S3)
+	default:
+		return nil, fmt.Errorf("unsupported handler type: '%s'", conf.Type)
+	}
+
+	return &Handler{
+		name:       conf.Name,
+		isNotified: make(chan nothing, 1),
+		conf:       conf,
+		client:     client,
+	}, nil
 }

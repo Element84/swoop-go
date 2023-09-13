@@ -1,29 +1,35 @@
 package template
 
 import (
+	"encoding/json"
 	"testing"
 
 	"gopkg.in/yaml.v3"
 )
 
 func Test_Template_URL(t *testing.T) {
-	data := map[string]any{
+	t.Setenv("TEMPLATE_TEST_VAR_NAME", "8435848884422341")
+	input := `{
 		"person": "James",
-		"question": map[string]any{
-			"noun": "speeding boat",
+		"question": {
+			"noun": "speeding boat"
 		},
-		"other": "unused",
+		"other": "unused"
+	}`
+	yml := `template: "hello {{ .person }}, how is your {{ .question.noun }}? {{ env \"TEMPLATE_TEST_VAR_NAME\" }}"`
+	expected := "hello James, how is your speeding boat? 8435848884422341"
+
+	var data any
+	err := json.Unmarshal([]byte(input), &data)
+	if err != nil {
+		t.Fatalf("failed to parse input json: %s", err)
 	}
-	yml := []byte(
-		`template: "hello {{ .person }}, how is your {{ .question.noun }}?"`,
-	)
-	expected := "hello James, how is your speeding boat?"
 
 	s := struct {
 		Template Template
 	}{}
 
-	err := yaml.Unmarshal(yml, &s)
+	err = yaml.Unmarshal([]byte(yml), &s)
 	if err != nil {
 		t.Fatalf("error parsing yaml: %s", err)
 	}

@@ -16,8 +16,12 @@ export AWS_ACCESS_KEY_ID="${MINIO_ACCESS_KEY}"
 export AWS_SECRET_ACCESS_KEY="${MINIO_SECRET_KEY}"
 export KUBECONFIG="${ROOT}/kubeconfig.yaml"
 
+TEST_SERVER_PORT=58878
+TEST_SERVER="${THIS_DIR}/test-server.py"
+
 FIXTURES="${ROOT}/fixtures"
 PAYLOADS="${FIXTURES}/payloads"
+PARAMETERS="${FIXTURES}/parameters"
 RESOURCES="${FIXTURES}/resource"
 TEMPLATES="${FIXTURES}/workflow-templates"
 
@@ -130,7 +134,7 @@ run_swoop_cmd() {
 
 
 # testing helpers
-insert_action() {
+insert_workflow() {
     local uuid="${1:?"must provide an action_uuid"}"
     local action_name="${2:?"must provide an action_name"}"
     psql <<EOF
@@ -152,6 +156,30 @@ insert_action() {
             'argoWorkflow',
             'ade69fe7-1d7d-572e-9f36-7242cc2aca77',
             1
+        );
+EOF
+}
+
+
+insert_callback() {
+    local uuid="${1:?"must provide an action_uuid"}"
+    local handler_name="${2:?"must provide a handler_name"}"
+    local handler_type="${2:?"must provide a handler_type"}"
+    psql <<EOF
+        insert into swoop.action (
+            action_uuid,
+            created_at,
+            action_type,
+            handler_name,
+            handler_type,
+            parent_uuid
+        ) values (
+            '${uuid}',
+            '2023-03-31'::timestamp,
+            'callback',
+            '${handler_name}',
+            '${handler_type}',
+            'ade69fe7-1d7d-572e-9f36-7242cc2aca77'
         );
 EOF
 }
@@ -181,6 +209,12 @@ stage_action_output() {
 }
 
 
+stage_callback_params() {
+    local uuid="${1?"must provide an action_uuid"}"
+    aws s3 cp "${PARAMETERS}/parameters.json" "s3://${TESTNAME}/callbacks/${uuid}/parameters.json" 1>&3 2>&3
+}
+
+
 has_callback_params() {
     local uuid="${1?"must provide an action_uuid"}"
     aws s3 ls "s3://${TESTNAME}/callbacks/${uuid}/parameters.json" 1>&3 2>&3
@@ -199,7 +233,18 @@ apply_workflow_resource() {
         | KUBECONFIG="${KUBECONFIG}" kubectl -n "${TESTNAME}" apply -f - 1>&3 2>&3
 }
 
+
 is_resource_in_cluster() {
     local uuid="${1?"must provide an action_uuid"}"
     KUBECONFIG="${KUBECONFIG}" kubectl -n "${TESTNAME}" get workflows "${uuid}" 1>&3 2>&3
+}
+
+
+test_server() {
+    local timelimit pid
+    timelimit="${1:?"specify server exectution timelimit in seconds"}"
+    TEST_SERVER_PORT="${TEST_SERVER_PORT}" <&0 "${TEST_SERVER}" 1>&3 2>&3 &
+    pid=$!
+    sleep "${timelimit}"
+    kill "${pid}"
 }

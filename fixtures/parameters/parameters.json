@@ -1,0 +1,17 @@
+{
+    "workflowName": "test-workflow",
+    "feature": {
+        "type": "Feature",
+        "id": "someId",
+        "geometry": {
+            "type": "Point",
+            "coordinates": [141.8, 32.1]
+        },
+        "properties": {
+            "name": "aPoint",
+            "datetime": "2023-04-14T12:56:55.123+00:00",
+            "anotherProp": 12345678
+        }
+    },
+    "unused": true
+}

@@ -63,10 +63,10 @@ main() {
     #     4) init during only (should still be in cluster at end)
     uuid4='018734f6-c400-72e2-b908-19e188e7d0c6'
 
-    insert_action "${uuid1}" mirror
-    insert_action "${uuid2}" mirror
-    insert_action "${uuid3}" mirror
-    insert_action "${uuid4}" mirror
+    insert_workflow "${uuid1}" mirror
+    insert_workflow "${uuid2}" mirror
+    insert_workflow "${uuid3}" mirror
+    insert_workflow "${uuid4}" mirror
 
     stage_action_input "${uuid1}"
     stage_action_input "${uuid2}"

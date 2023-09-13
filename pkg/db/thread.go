@@ -11,7 +11,7 @@ import (
 
 type Thread struct {
 	Uuid        uuid.UUID
-	WorkflowId  string
+	ActionName  *string
 	HandlerName string
 	Priority    int
 	LockId      int
@@ -28,7 +28,7 @@ func GetProcessableThreads(
 		ctx,
 		// TODO: review db schema to see if this is using indexes effectively
 		`SELECT
-		    a.action_name as workflowid,
+		    a.action_name as actionname,
 			t.action_uuid as uuid,
 			t.handler_name as handlername,
 			t.priority as priority,
