@@ -178,6 +178,23 @@ EOF
         rc=1
     }
 
+    has_callback_http "${cbid1}" || {
+        echo2 "FAILED: Callback 1 http not found; uuid: '${cbid1}'"
+        rc=1
+    }
+    ! has_callback_http "${cbid2}" || {
+        echo2 "FAILED: Callback 2 http found and should not exist; uuid: '${cbid2}'"
+        rc=1
+    }
+    has_callback_http "${cbid3}" || {
+        echo2 "FAILED: Callback 3 http not found; uuid: '${cbid3}'"
+        rc=1
+    }
+    has_callback_http "${cbid3}" || {
+        echo2 "FAILED: Callback 4 http not found; uuid: '${cbid3}'"
+        rc=1
+    }
+
     return ${rc}
 }
 

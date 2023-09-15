@@ -50,13 +50,15 @@ func (s *Client) NewRequest(data any) (*http.Request, error) {
 	return req, nil
 }
 
-func (s *Client) MakeRequest(ctx context.Context, req *http.Request) error {
+func (s *Client) MakeRequest(ctx context.Context, req *http.Request) (*Response, error) {
 	resp, err := wrapRequest(s.client.Do(req.WithContext(ctx)))
 	if err != nil {
 		// TODO: how to differentiate between terminal and transient errors in client
-		return err
+		return resp, err
 	}
-	return s.ResponseChecker.check(resp)
+
+	err = s.ResponseChecker.check(resp)
+	return resp, err
 }
 
 func (s *Client) UnmarshalYAML(unmarshal func(interface{}) error) error {

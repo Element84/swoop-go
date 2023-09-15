@@ -221,6 +221,12 @@ has_callback_params() {
 }
 
 
+has_callback_http() {
+    local uuid="${1?"must provide an action_uuid"}"
+    aws s3 ls "s3://${TESTNAME}/callbacks/${uuid}/http.json" 1>&3 2>&3
+}
+
+
 apply_workflow_templates() {
     KUBECONFIG="${KUBECONFIG}" kubectl -n "${TESTNAME}" apply -Rf "${TEMPLATES}" 1>&3 2>&3
 }

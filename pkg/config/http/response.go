@@ -9,13 +9,13 @@ import (
 	"github.com/element84/swoop-go/pkg/config/regexp"
 )
 
-type response struct {
+type Response struct {
 	StatusCode int
 	Body       string
-	Json       any
+	Json       any `json:"-"`
 }
 
-func wrapRequest(resp *http.Response, err error) (*response, error) {
+func wrapRequest(resp *http.Response, err error) (*Response, error) {
 	if err != nil {
 		return nil, err
 	}
@@ -34,7 +34,7 @@ func wrapRequest(resp *http.Response, err error) (*response, error) {
 		bodyJson = nil
 	}
 
-	return &response{
+	return &Response{
 		resp.StatusCode,
 		string(body),
 		bodyJson,
@@ -48,7 +48,7 @@ type responseMatcher struct {
 	Result     RequestResult      `yaml:"result"`
 }
 
-func (rm *responseMatcher) match(resp *response) (matched bool, err error) {
+func (rm *responseMatcher) match(resp *Response) (matched bool, err error) {
 	if rm.StatusCode != resp.StatusCode {
 		return false, nil
 	}
@@ -66,7 +66,7 @@ func (rm *responseMatcher) match(resp *response) (matched bool, err error) {
 
 type responseChecker []*responseMatcher
 
-func (rc *responseChecker) check(resp *response) error {
+func (rc *responseChecker) check(resp *Response) error {
 	for _, matcher := range *rc {
 		matched, err := matcher.match(resp)
 		if matched {
