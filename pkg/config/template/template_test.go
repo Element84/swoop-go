@@ -7,7 +7,7 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-func Test_Template_URL(t *testing.T) {
+func Test_Template(t *testing.T) {
 	t.Setenv("TEMPLATE_TEST_VAR_NAME", "8435848884422341")
 	input := `{
 		"person": "James",
@@ -35,6 +35,39 @@ func Test_Template_URL(t *testing.T) {
 	}
 
 	parsed, err := s.Template.ExecuteToString(data)
+	if err != nil {
+		t.Fatalf("error templating: %s", err)
+	}
+
+	if parsed != expected {
+		t.Fatalf("expected '%s', got '%s'", expected, parsed)
+	}
+}
+
+func Test_TemplateJson(t *testing.T) {
+	input := `{
+		"person": "James",
+		"question": {
+			"noun": "speeding boat"
+		},
+		"other": "unused"
+	}`
+	yml := `"{{ toJson . }}"`
+	expected := `{"other":"unused","person":"James","question":{"noun":"speeding boat"}}`
+
+	var data any
+	err := json.Unmarshal([]byte(input), &data)
+	if err != nil {
+		t.Fatalf("failed to parse input json: %s", err)
+	}
+
+	var template Template
+	err = yaml.Unmarshal([]byte(yml), &template)
+	if err != nil {
+		t.Fatalf("error parsing yaml: %s", err)
+	}
+
+	parsed, err := template.ExecuteToString(data)
 	if err != nil {
 		t.Fatalf("error templating: %s", err)
 	}
