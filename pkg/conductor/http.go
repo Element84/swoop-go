@@ -2,6 +2,8 @@ package conductor
 
 import (
 	"context"
+	"io"
+	"log"
 
 	"github.com/element84/swoop-go/pkg/config/http"
 	"github.com/element84/swoop-go/pkg/db"
@@ -39,11 +41,58 @@ func (hc *httpClient) HandleAction(ctx context.Context, conn db.Conn, thread *db
 			return errors.NewRequestError(err, false)
 		}
 
-		return hc.MakeRequest(ctx, request)
-		// TODO: save response to object storage
-		//   -> need to return it from make request in some way I guess
-		//   -> I guess we need a response model that has what we care about
-		//      (oh, I think we have that!) and can be dumped to json
+		resp, err := hc.MakeRequest(ctx, request)
+
+		readBody := func() (*string, error) {
+			reader, err := request.GetBody()
+			if err != nil {
+				return nil, err
+			}
+
+			b, err := io.ReadAll(reader)
+			if err != nil {
+				return nil, err
+			}
+
+			body := string(b)
+
+			return &body, nil
+		}
+
+		logRequest := func() error {
+			body, err := readBody()
+			if err != nil {
+				log.Printf("failed to read request body: %s", err)
+			}
+
+			return hc.s3.PutCallbackHttp(
+				ctx,
+				thread.Uuid,
+				map[string]any{
+					"request": map[string]any{
+						"method": request.Method,
+						"url":    request.URL.String(),
+						"proto":  request.Proto,
+						"header": request.Header,
+						"body":   body,
+						"host":   request.Host,
+					},
+					"response": resp,
+				},
+			)
+		}
+
+		// TODO: LOGGING LIKE THIS COULD LEAK SECRETS!!!
+		// We should consider having a way to:
+		//   - toggle logging on/off (off by default)
+		//   - redact certain info (sounds hard/impossible)
+		//   - ???
+		_err := logRequest()
+		if _err != nil {
+			log.Printf("failed to write http data: %s", _err)
+		}
+
+		return err
 	}
 	return HandleActionWrapper(ctx, conn, thread, hc.isAsync, handleFn)
 }

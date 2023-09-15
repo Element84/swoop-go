@@ -129,7 +129,7 @@ func Test_Client(t *testing.T) {
 				ts.StatusCode = test.respCode
 				ts.ResponseBody = test.respBody
 
-				err := hr.MakeRequest(ctx, req)
+				_, err := hr.MakeRequest(ctx, req)
 				result, ok := RequestResultFromError(err)
 				if !ok {
 					t.Logf("%+v", err)

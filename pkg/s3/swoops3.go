@@ -39,3 +39,8 @@ func (s *SwoopS3) GetCallbackParams(ctx context.Context, callbackUuid uuid.UUID)
 	key := fmt.Sprintf("callbacks/%s/parameters.json", callbackUuid)
 	return s.jsonClient.GetJsonFromObject(ctx, key)
 }
+
+func (s *SwoopS3) PutCallbackHttp(ctx context.Context, callbackUuid uuid.UUID, json any) error {
+	key := fmt.Sprintf("callbacks/%s/http.json", callbackUuid)
+	return s.jsonClient.PutJsonIntoObject(ctx, key, json)
+}
