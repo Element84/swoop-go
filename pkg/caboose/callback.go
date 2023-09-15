@@ -68,9 +68,9 @@ func (cbx *CallbackExecutor) extractParams(
 ) (*map[string]any, error) {
 	params := map[string]any{}
 	for paramName, param := range *parameters {
-		if param.HasPath() {
-			result := param.GetJsonPath(data).([]any)
-			// GetJsonPath always returns an array even if only one match
+		if param.Path != nil {
+			result := param.Path.Get(data)
+			// Path.Get always returns an array even if only one match
 			if len(result) == 0 {
 				return nil, fmt.Errorf("failed to extract value for parameter '%s'", paramName)
 			} else if len(result) == 1 {

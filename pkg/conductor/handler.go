@@ -11,6 +11,7 @@ import (
 
 	"github.com/element84/swoop-go/pkg/config"
 	"github.com/element84/swoop-go/pkg/db"
+	"github.com/element84/swoop-go/pkg/errors"
 )
 
 const (
@@ -48,25 +49,33 @@ func HandleActionWrapper(
 		return err
 	}
 
-	handleError := func(_err error) error {
+	handleError := func(_err error, retryable bool) error {
 		err := tx.Rollback(ctx)
 		if err != nil {
 			return err
 		}
 
-		// TODO: need to handle backoff and retries, not just jump to failed
-		// TODO: we don't have a way to track attempts and therefore can't calculate backoff
+		if retryable {
+			// TODO: we don't have a way to track attempts
+			//  -> can't calculate backoff
+			//  -> can't calculate retries exhausted
+			// Once we can, maybe put this logic in a higher-level function on the thread type?
+			// TODO: need to schedule handler poll once this backoff is due, else we'll miss it
+			return thread.InsertBackoffEvent(ctx, conn, 60, _err.Error())
+		}
+
 		return thread.InsertFailedEvent(ctx, conn, _err.Error())
 	}
 
-	// TODO: we need some way to know if the error is terminal or retryable
-	//   -> this is an aspect of the handler, which is not in scope here
-	//      -> maybe we need to pass the error handling to the client, where applicable
-	//   -> are errors and how to handle them client specific?
-	//   -> depending on terminal or retryable we need to do different things in the db
 	err = handleFn()
 	if err != nil {
-		_err := handleError(err)
+		retryable := true
+		re, ok := err.(*errors.RequestError)
+		if ok {
+			retryable = re.Retryable
+		}
+
+		_err := handleError(err, retryable)
 		if _err != nil {
 			return fmt.Errorf(
 				"error running action: %s; while handling that error encountered another: %s",
@@ -141,26 +150,6 @@ limit is adjusted based on the number of reserved, i.e., limit =
 max_limit - allocated?  Like a token bucket that you have to release as
 well as request? <-- YES, THIS
 */
-func NewHandlerFromConfig(ctx context.Context, conf *config.Handler) (*Handler, error) {
-	var client HandlerClient
-	switch conf.Type {
-	case config.ArgoWorkflows:
-		c, err := NewArgoClient(ctx, conf.ArgoConf, conf.Workflows)
-		if err != nil {
-			return nil, fmt.Errorf("failed making client: %s", err)
-		}
-		client = c
-	default:
-		return nil, fmt.Errorf("unsupported handler type: '%s'", conf.Type)
-	}
-
-	return &Handler{
-		name:       conf.Name,
-		isNotified: make(chan nothing, 1),
-		conf:       conf,
-		client:     client,
-	}, nil
-}
 
 func (h *Handler) GetName() string {
 	return h.name
@@ -214,6 +203,8 @@ func (h *Handler) Run(ctx context.Context, conn db.Conn) error {
 	if err != nil {
 		return err
 	}
+
+	log.Printf("handler %s: got %d threads", h.name, len(threads))
 
 	// TODO: test case for this condition
 	if len(threads) == batchSize {

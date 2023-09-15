@@ -28,7 +28,6 @@ func mkConductorCmd() *cobra.Command {
 
 	cmd.AddCommand(func() *cobra.Command {
 		pgConductor := &conductor.PgConductor{
-			S3Driver: s3Driver,
 			DbConfig: &db.ConnectConfig{},
 		}
 
@@ -41,6 +40,7 @@ func mkConductorCmd() *cobra.Command {
 					log.Fatal(err)
 				}
 				pgConductor.SwoopConfig = sc
+				pgConductor.S3 = s3.NewSwoopS3(s3.NewJsonClient(s3Driver))
 				err = cmdutil.Run(
 					"swoop-conductor",
 					pgConductor,

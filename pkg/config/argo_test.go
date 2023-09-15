@@ -210,7 +210,7 @@ func Test_ArgoTemplateBad(t *testing.T) {
 					[]byte(fmt.Sprintf(`template: "%s"`, template)),
 					&struct{ Template ArgoTemplate }{})
 				if err == nil {
-					t.Fatalf("should have errored parsing yaml, but didn't")
+					t.Fatal("should have errored parsing yaml, but didn't")
 				}
 			},
 		)

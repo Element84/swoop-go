@@ -21,10 +21,8 @@ handlers:
         type: string
         format: uuid
 
-  # We believe it is best to re-template the request
-  # (at least with regard to secrets) JIT for every request execution
   publishS3Handler:
-    type: http
+    type: synchttp
     backoff:
       retries: 10
       seconds: 5
@@ -65,17 +63,46 @@ handlers:
       responses:
         # first matched wins
         # by default any 2xx is success and anything else will be retried
-        - status: 400
+        - statusCode: 400
           message: ".*timed out.*"
-          fatal: false
-        - status: 400
-          fatal: true
+          result: error
+        - statusCode: 400
+          result: fatal
+
+  testCbHandler:
+    type: synchttp
+    parameters:
+      workflowName:
+        type: string
+        default: a_value
+      feature:
+        type: object
+    request:
+      url: http://localhost:{{ env "TEST_SERVER_PORT" }}
+      method: POST
+      body: |
+        {
+          "id": "{{ .uuid }}",
+          "fixed": "a_value",
+          "name": "{{ .parameters.workflowName -}}",
+          "date": "{{ .parameters.feature.properties.datetime -}}"
+        }
+      headers:
+        Content-Type: "application/json"
+        X-Workflow-Name: "{{ .parameters.workflowName }}"
+      followRedirects: true
+      responses:
+        - statusCode: 400
+          message: ".*timeout.*"
+          result: error
+        - statusCode: 404
+          result: fatal
 
 conductors:
   instance-a:
     handlers:
       - argoHandler
-      - publishS3Handler
+      - testCbHandler
   instance-b: {}
 
 callbacks:

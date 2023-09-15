@@ -15,6 +15,7 @@ import (
 	"github.com/element84/swoop-go/pkg/config"
 	sctx "github.com/element84/swoop-go/pkg/context"
 	"github.com/element84/swoop-go/pkg/db"
+	swooperrs "github.com/element84/swoop-go/pkg/errors"
 )
 
 type ArgoWorkflow struct {
@@ -121,7 +122,7 @@ func (ac *ArgoClient) SubmitWorkflow(
 ) error {
 	wf, ok := ac.workflows[wfId]
 	if !ok {
-		return fmt.Errorf("unknown workflow '%s'", wfId)
+		return swooperrs.NewRequestError(fmt.Errorf("unknown workflow '%s'", wfId), false)
 	}
 
 	return wf.SubmitWorkflow(ctx, ac, wfUuid, priority)
@@ -129,7 +130,7 @@ func (ac *ArgoClient) SubmitWorkflow(
 
 func (ac *ArgoClient) HandleAction(ctx context.Context, conn db.Conn, thread *db.Thread) error {
 	handleFn := func() error {
-		return ac.SubmitWorkflow(ctx, thread.WorkflowId, thread.Uuid, thread.Priority)
+		return ac.SubmitWorkflow(ctx, *thread.ActionName, thread.Uuid, thread.Priority)
 	}
 	return HandleActionWrapper(ctx, conn, thread, true, handleFn)
 }

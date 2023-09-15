@@ -3,8 +3,14 @@ package config
 import (
 	"fmt"
 
+	"github.com/element84/swoop-go/pkg/config/jsonpath"
 	"github.com/element84/swoop-go/pkg/utils"
 )
+
+type CallbackParameter struct {
+	Value interface{}        `yaml:"value"`
+	Path  *jsonpath.JsonPath `yaml:"path"`
+}
 
 type Callbacks map[string]*Callback
 
@@ -90,7 +96,7 @@ func (cb *Callback) _setHandler(handlers Handlers) error {
 	for name, param := range *callbackParams {
 		callbackParamNames = append(callbackParamNames, name)
 
-		if param.jsonPath == nil {
+		if param.Path == nil {
 			// if no jsonPath this is a value parameter we can validate
 			schema, ok := cb.Handler.Parameters.Properties[name]
 			if !ok {

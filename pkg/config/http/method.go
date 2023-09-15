@@ -1,4 +1,4 @@
-package config
+package http
 
 import (
 	"fmt"
@@ -16,7 +16,7 @@ const (
 	DELETE            = http.MethodDelete
 )
 
-var SupportedHttpMethods = map[HttpMethod]struct{}{
+var supportedHttpMethods = map[HttpMethod]struct{}{
 	GET:    {},
 	POST:   {},
 	PUT:    {},
@@ -28,10 +28,10 @@ func (hm HttpMethod) String() string {
 	return string(hm)
 }
 
-func ParseHttpMethod(s string) (HttpMethod, error) {
+func parseHttpMethod(s string) (HttpMethod, error) {
 	hm := HttpMethod(strings.ToUpper(s))
 
-	_, ok := SupportedHttpMethods[hm]
+	_, ok := supportedHttpMethods[hm]
 	if !ok {
 		return "", fmt.Errorf("unknown or unsupported HTTP method type '%s'", s)
 	}
@@ -47,7 +47,7 @@ func (hm *HttpMethod) UnmarshalYAML(unmarshal func(interface{}) error) error {
 		return err
 	}
 
-	*hm, err = ParseHttpMethod(h)
+	*hm, err = parseHttpMethod(h)
 	if err != nil {
 		return err
 	}
