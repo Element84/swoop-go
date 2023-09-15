@@ -2,15 +2,9 @@ package template
 
 import (
 	"bytes"
-	"os"
 	"text/template"
-)
 
-var (
-	fnMap = map[string]interface{}{
-		// can call this function like {{ env "VAR_NAME" }} in a template
-		"env": os.Getenv,
-	}
+	"github.com/Masterminds/sprig/v3"
 )
 
 type baseTemplate struct {
@@ -18,7 +12,7 @@ type baseTemplate struct {
 }
 
 func newTemplate(t string) (*baseTemplate, error) {
-	tmpl := template.New("").Funcs(template.FuncMap(fnMap))
+	tmpl := template.New("").Funcs(sprig.FuncMap())
 	tmpl, err := tmpl.Parse(t)
 	if err != nil {
 		return nil, err

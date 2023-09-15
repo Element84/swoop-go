@@ -3,6 +3,7 @@ module github.com/element84/swoop-go
 go 1.21
 
 require (
+	github.com/Masterminds/sprig/v3 v3.2.3
 	github.com/argoproj/argo-workflows/v3 v3.4.7
 	github.com/aws/aws-sdk-go v1.44.105
 	github.com/creasty/defaults v1.7.0
@@ -25,7 +26,6 @@ require (
 require (
 	github.com/Masterminds/goutils v1.1.1 // indirect
 	github.com/Masterminds/semver/v3 v3.2.1 // indirect
-	github.com/Masterminds/sprig/v3 v3.2.3 // indirect
 	github.com/antonmedv/expr v1.12.5 // indirect
 	github.com/argoproj/argo-events v1.7.3 // indirect
 	github.com/argoproj/pkg v0.13.6 // indirect
