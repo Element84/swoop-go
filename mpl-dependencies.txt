@@ -1,0 +1,5 @@
+This project has the following MPL-licensed dependencies:
+
+github.com/go-sql-driver/mysql
+github.com/hashicorp/go-uuid
+github.com/hashicorp/hcl/json/scanner
