@@ -1,5 +1,13 @@
 This project has the following MPL-licensed dependencies:
 
-github.com/go-sql-driver/mysql
-github.com/hashicorp/go-uuid
-github.com/hashicorp/hcl/json/scanner
+go-sql-driver/mysql (MPL 2.0)
+    * Source Code: https://github.com/go-sql-driver/mysql
+    * License: https://github.com/go-sql-driver/mysql/blob/master/LICENSE
+
+hashicorp/go-uuid (MPL 2.0)
+    * Source Code: https://github.com/hashicorp/go-uuid
+    * License: https://github.com/hashicorp/go-uuid/blob/master/LICENSE
+
+hashicorp/hcl (MPL 2.0)
+    * Source Code: https://github.com/hashicorp/hcl
+    * License: https://github.com/hashicorp/hcl/blob/main/LICENSE
